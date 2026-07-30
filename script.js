@@ -10,27 +10,34 @@
     hard: { xp: 45, label: "Hard" },
   };
 
+  const RARITY_COST = {
+    common: 2,
+    rare: 3,
+    epic: 6,
+    legendary: 9,
+  };
+
   const THEMES = [
     {
       id: "sunset",
       name: "Sunset",
       rarity: "common",
-      cost: 3,
+      cost: RARITY_COST.common,
       desc: "Golden sun over sea, clouds, and silhouettes.",
     },
     {
       id: "blackhole",
       name: "TON 618",
       rarity: "epic",
-      cost: 15,
+      cost: RARITY_COST.epic,
       desc: "The ultramassive black hole — blazing accretion disk.",
     },
     {
       id: "mario",
       name: "Mario World",
       rarity: "legendary",
-      cost: 20,
-      desc: "Blue skies, hills, and pipe-era vibes.",
+      cost: RARITY_COST.legendary,
+      desc: "Pipes, blocks, bushes, and classic side-scroll vibes.",
     },
   ];
 
@@ -39,7 +46,7 @@
       id: "arkanoid",
       name: "Arkanoid",
       rarity: "rare",
-      cost: 10,
+      cost: RARITY_COST.rare,
       desc: "Break bricks with the paddle.",
       help: "← → or A/D move · click/tap also works",
     },
@@ -47,7 +54,7 @@
       id: "galaga",
       name: "Galaga",
       rarity: "epic",
-      cost: 20,
+      cost: RARITY_COST.epic,
       desc: "Blast waves of invaders.",
       help: "← → move · Space / tap to shoot",
     },
@@ -55,7 +62,7 @@
       id: "tetris",
       name: "Tetris",
       rarity: "legendary",
-      cost: 30,
+      cost: RARITY_COST.legendary,
       desc: "Classic stack-and-clear blocks.",
       help: "← → move · ↑ rotate · ↓ soft drop · Space hard drop",
     },
@@ -63,7 +70,7 @@
       id: "mario2d",
       name: "Mario 2D",
       rarity: "legendary",
-      cost: 30,
+      cost: RARITY_COST.legendary,
       desc: "Old-school run and jump side-scroller.",
       help: "← → move · ↑ / Space / tap to jump",
     },
@@ -304,6 +311,11 @@
     questsCompleted: document.getElementById("quests-completed"),
     restMinutes: document.getElementById("rest-minutes"),
     restSeconds: document.getElementById("rest-seconds"),
+    completedList: document.getElementById("completed-list"),
+    completedEmpty: document.getElementById("completed-empty"),
+    questPanelActive: document.getElementById("quest-panel-active"),
+    questPanelCompleted: document.getElementById("quest-panel-completed"),
+    questTabs: [...document.querySelectorAll(".quest-tab")],
   };
 
   function todayKey() {
@@ -357,6 +369,7 @@
     activeTheme: THEME_IDS.has(loaded?.activeTheme) ? loaded.activeTheme : null,
     studySeconds: Math.max(0, loaded?.studySeconds ?? 0),
     questsCompleted: Math.max(0, loaded?.questsCompleted ?? 0),
+    completedLog: Array.isArray(loaded?.completedLog) ? loaded.completedLog : [],
     streakDays: streakInit.streakDays,
     lastActiveDate: streakInit.lastActiveDate,
   };
@@ -473,6 +486,44 @@
     else playEasyCompleteSound();
   }
 
+  /** Classic “time’s up / stop” alarm bell */
+  function playStopAlarmSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+
+    for (let i = 0; i < 3; i++) {
+      const start = t + i * 0.38;
+      tone(ctx, {
+        freq: 880,
+        type: "square",
+        start,
+        dur: 0.22,
+        gain: 0.07,
+        attack: 0.005,
+        release: 0.12,
+      });
+      tone(ctx, {
+        freq: 1174.66,
+        type: "square",
+        start,
+        dur: 0.22,
+        gain: 0.045,
+        attack: 0.005,
+        release: 0.12,
+      });
+      tone(ctx, {
+        freq: 440,
+        type: "triangle",
+        start: start + 0.05,
+        dur: 0.18,
+        gain: 0.04,
+        attack: 0.005,
+        release: 0.1,
+      });
+    }
+  }
+
   /** Minecraft-style XP / level-up sparkle when the bar fills */
   function playMinecraftXpSound() {
     const ctx = getAudioCtx();
@@ -558,6 +609,7 @@
         activeTheme: state.activeTheme,
         studySeconds: state.studySeconds,
         questsCompleted: state.questsCompleted,
+        completedLog: state.completedLog,
         streakDays: state.streakDays,
         lastActiveDate: state.lastActiveDate,
       })
@@ -759,21 +811,21 @@
 
   function renderQuests() {
     els.questList.innerHTML = "";
-    const active = state.quests.filter((q) => !q.done).length;
-    els.questCount.textContent = `${active} active`;
-    els.questEmpty.hidden = state.quests.length > 0;
+    const activeQuests = state.quests.filter((q) => !q.done);
+    els.questCount.textContent = `${activeQuests.length} active`;
+    els.questEmpty.hidden = activeQuests.length > 0;
 
-    state.quests.forEach((quest) => {
+    activeQuests.forEach((quest) => {
       const difficulty = DIFFICULTY[quest.difficulty] ? quest.difficulty : "medium";
       const xp = questXp(difficulty);
       const li = document.createElement("li");
-      li.className = `quest-item ${difficulty}${quest.done ? " done" : ""}`;
+      li.className = `quest-item ${difficulty}`;
       li.dataset.id = quest.id;
 
       const check = document.createElement("input");
       check.type = "checkbox";
       check.className = "quest-check";
-      check.checked = quest.done;
+      check.checked = false;
       check.setAttribute("aria-label", `Complete ${quest.text}`);
 
       const text = document.createElement("span");
@@ -800,6 +852,44 @@
       li.append(check, text, diffTag, xpTag, del);
       els.questList.appendChild(li);
     });
+
+    renderCompletedLog();
+  }
+
+  function renderCompletedLog() {
+    els.completedList.innerHTML = "";
+    els.completedEmpty.hidden = state.completedLog.length > 0;
+
+    state.completedLog.forEach((entry) => {
+      const difficulty = DIFFICULTY[entry.difficulty] ? entry.difficulty : "medium";
+      const li = document.createElement("li");
+      li.className = `quest-item ${difficulty} done`;
+
+      const text = document.createElement("span");
+      text.className = "quest-text";
+      text.textContent = entry.text;
+
+      const diffTag = document.createElement("span");
+      diffTag.className = `quest-diff ${difficulty}`;
+      diffTag.textContent = DIFFICULTY[difficulty].label;
+
+      const when = document.createElement("span");
+      when.className = "completed-when";
+      when.textContent = entry.at || "";
+
+      li.append(text, diffTag, when);
+      els.completedList.appendChild(li);
+    });
+  }
+
+  function setQuestTab(tab) {
+    els.questTabs.forEach((btn) => {
+      const on = btn.dataset.tab === tab;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    els.questPanelActive.hidden = tab !== "active";
+    els.questPanelCompleted.hidden = tab !== "completed";
   }
 
   function addQuest(text, difficulty) {
@@ -811,29 +901,38 @@
       difficulty: diff,
     });
     playAddSound();
+    setQuestTab("active");
     renderQuests();
     saveState();
   }
 
   function toggleQuest(id) {
     const quest = state.quests.find((q) => q.id === id);
-    if (!quest) return;
+    if (!quest || quest.done) return;
 
-    if (!quest.done) {
-      const difficulty = DIFFICULTY[quest.difficulty] ? quest.difficulty : "medium";
-      const xp = questXp(difficulty);
-      quest.done = true;
-      state.questsCompleted += 1;
-      playCompleteSound(difficulty);
-      renderQuests();
-      renderStudyStats();
-      saveState();
-      setTimeout(() => addXp(xp, `${DIFFICULTY[difficulty].label} quest`), 180);
-    } else {
-      quest.done = false;
-      renderQuests();
-      saveState();
-    }
+    const difficulty = DIFFICULTY[quest.difficulty] ? quest.difficulty : "medium";
+    const xp = questXp(difficulty);
+    quest.done = true;
+    state.questsCompleted += 1;
+    state.completedLog.unshift({
+      id: crypto.randomUUID(),
+      text: quest.text,
+      difficulty,
+      at: new Date().toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    });
+    // keep log reasonable
+    if (state.completedLog.length > 100) state.completedLog.length = 100;
+
+    playCompleteSound(difficulty);
+    renderQuests();
+    renderStudyStats();
+    saveState();
+    setTimeout(() => addXp(xp, `${DIFFICULTY[difficulty].label} quest`), 180);
   }
 
   function deleteQuest(id) {
@@ -1078,6 +1177,7 @@
   }
 
   function openRewardModal() {
+    playStopAlarmSound();
     const owned = GAMES.filter((g) => state.ownedGames.includes(g.id));
     if (!owned.length) {
       els.rewardCopy.textContent =
@@ -1787,6 +1887,10 @@
       destroy() {},
     };
   }
+
+  els.questTabs.forEach((btn) => {
+    btn.addEventListener("click", () => setQuestTab(btn.dataset.tab));
+  });
 
   renderXp();
   renderQuests();

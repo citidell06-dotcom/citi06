@@ -28,6 +28,8 @@
     </div>
     <div class="ton618-scene">
       <div class="ton-stars"></div>
+      <div class="ton-stars ton-stars-far"></div>
+      <div class="ton-stars ton-stars-near"></div>
       <div class="ton-disk"></div>
       <div class="ton-disk-inner"></div>
       <div class="ton-photon"></div>
@@ -35,6 +37,29 @@
       <div class="ton-jet left"></div>
       <div class="ton-jet right"></div>
       <div class="ton-label">TON 618</div>
+    </div>
+    <div class="mario-scene">
+      <div class="mario-sky"></div>
+      <div class="mario-cloud mc1"></div>
+      <div class="mario-cloud mc2"></div>
+      <div class="mario-cloud mc3"></div>
+      <div class="mario-hill mh1"></div>
+      <div class="mario-hill mh2"></div>
+      <div class="mario-bush mb1"></div>
+      <div class="mario-bush mb2"></div>
+      <div class="mario-bush mb3"></div>
+      <div class="mario-pipe mp1"><span class="pipe-lip"></span></div>
+      <div class="mario-pipe mp2"><span class="pipe-lip"></span></div>
+      <div class="mario-blocks">
+        <span class="brick"></span><span class="brick"></span><span class="qblock"></span><span class="brick"></span>
+        <span class="qblock"></span><span class="brick"></span><span class="brick"></span>
+      </div>
+      <div class="mario-blocks mario-blocks-2">
+        <span class="qblock"></span><span class="brick"></span><span class="brick"></span><span class="qblock"></span>
+      </div>
+      <div class="mario-ground">
+        <div class="mario-ground-top"></div>
+      </div>
     </div>
   </div>
 
@@ -126,37 +151,49 @@
         <span class="panel-chip" id="quest-count">0 active</span>
       </div>
 
-      <form class="quest-form" id="quest-form">
-        <label class="sr-only" for="quest-input">New quest</label>
-        <input
-          type="text"
-          id="quest-input"
-          name="quest"
-          placeholder="Add a study quest…"
-          maxlength="80"
-          autocomplete="off"
-          required
-        />
-        <fieldset class="difficulty-picker">
-          <legend class="sr-only">Quest difficulty</legend>
-          <label class="diff-option" data-diff="easy">
-            <input type="radio" name="difficulty" value="easy" checked />
-            <span>Easy</span>
-          </label>
-          <label class="diff-option" data-diff="medium">
-            <input type="radio" name="difficulty" value="medium" />
-            <span>Medium</span>
-          </label>
-          <label class="diff-option" data-diff="hard">
-            <input type="radio" name="difficulty" value="hard" />
-            <span>Hard</span>
-          </label>
-        </fieldset>
-        <button type="submit" class="btn btn-primary">Add</button>
-      </form>
+      <div class="quest-tabs" role="tablist" aria-label="Quest views">
+        <button type="button" class="quest-tab active" role="tab" aria-selected="true" data-tab="active" id="tab-active">Active</button>
+        <button type="button" class="quest-tab" role="tab" aria-selected="false" data-tab="completed" id="tab-completed">Completed</button>
+      </div>
 
-      <ul class="quest-list" id="quest-list" aria-live="polite"></ul>
-      <p class="empty-state" id="quest-empty">No quests yet. Add one to begin.</p>
+      <div class="quest-tab-panel" id="quest-panel-active" data-panel="active">
+        <form class="quest-form" id="quest-form">
+          <label class="sr-only" for="quest-input">New quest</label>
+          <input
+            type="text"
+            id="quest-input"
+            name="quest"
+            placeholder="Add a study quest…"
+            maxlength="80"
+            autocomplete="off"
+            required
+          />
+          <fieldset class="difficulty-picker">
+            <legend class="sr-only">Quest difficulty</legend>
+            <label class="diff-option" data-diff="easy">
+              <input type="radio" name="difficulty" value="easy" checked />
+              <span>Easy</span>
+            </label>
+            <label class="diff-option" data-diff="medium">
+              <input type="radio" name="difficulty" value="medium" />
+              <span>Medium</span>
+            </label>
+            <label class="diff-option" data-diff="hard">
+              <input type="radio" name="difficulty" value="hard" />
+              <span>Hard</span>
+            </label>
+          </fieldset>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </form>
+
+        <ul class="quest-list" id="quest-list" aria-live="polite"></ul>
+        <p class="empty-state" id="quest-empty">No quests yet. Add one to begin.</p>
+      </div>
+
+      <div class="quest-tab-panel" id="quest-panel-completed" data-panel="completed" hidden>
+        <ul class="quest-list completed-log" id="completed-list" aria-live="polite"></ul>
+        <p class="empty-state" id="completed-empty">No completed quests yet.</p>
+      </div>
     </section>
 
     <section class="panel timer-panel" aria-labelledby="timer-heading">
