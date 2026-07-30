@@ -1101,15 +1101,16 @@
     const active = type === "theme" && state.activeTheme === item.id;
     let actionLabel = "Free";
     let actionAttr = `data-buy-${type}="${item.id}"`;
-    let disabled = "";
+    let btnClass = "btn-primary";
 
     if (owned && type === "theme") {
       actionLabel = active ? "Equipped" : "Equip";
       actionAttr = `data-equip-theme="${item.id}"`;
-    } else if (owned && type === "game") {
-      actionLabel = "Playable";
-      actionAttr = "";
-      disabled = "disabled";
+      btnClass = "btn-ghost";
+    } else if (type === "game") {
+      actionLabel = "Play";
+      actionAttr = `data-play-game="${item.id}"`;
+      btnClass = "btn-primary";
     }
 
     const swatch =
@@ -1123,7 +1124,7 @@
         </div>
         ${swatch}
         <p class="shop-card-desc">${item.desc}</p>
-        <button type="button" class="btn ${owned ? "btn-ghost" : "btn-primary"}" ${actionAttr} ${disabled}>${actionLabel}</button>
+        <button type="button" class="btn ${btnClass}" ${actionAttr}>${actionLabel}</button>
       </article>
     `;
   }
@@ -1141,8 +1142,16 @@
   });
 
   els.gameShop.addEventListener("click", (e) => {
+    const play = e.target.closest("[data-play-game]");
     const buy = e.target.closest("[data-buy-game]");
-    if (buy) buyGame(buy.dataset.buyGame);
+    if (play) {
+      if (!state.ownedGames.includes(play.dataset.playGame)) {
+        buyGame(play.dataset.playGame);
+      }
+      startMiniGame(play.dataset.playGame);
+    } else if (buy) {
+      buyGame(buy.dataset.buyGame);
+    }
   });
 
   let restRemaining = REST_SECONDS;
@@ -1165,7 +1174,7 @@
     const owned = GAMES.filter((g) => state.ownedGames.includes(g.id));
     if (!owned.length) {
       els.rewardCopy.textContent =
-        "Rest up from your quests. Buy games in the shop to play during breaks.";
+        "Rest up from your quests. Pick a game below when you’re ready.";
       els.rewardGames.innerHTML = "";
     } else {
       els.rewardCopy.textContent =
