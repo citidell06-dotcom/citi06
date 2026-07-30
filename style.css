@@ -1141,15 +1141,31 @@ body {
     linear-gradient(180deg, #2a1848 0%, #e85d4c 45%, #ffb347 70%, #1a3a5c 100%);
 }
 
-.preview-swatch.blackhole {
-  background:
-    radial-gradient(circle at 50% 50%, #000 0 12%, #f6c28b 14% 16%, #ff8a3d 18% 22%, #1a0a2e 40%, #02040a 70%);
-}
-
 .preview-swatch.mario {
   background:
-    linear-gradient(#5c94fc 0 58%, #5cbf2a 58% 72%, #c84c0c 72% 100%);
+    linear-gradient(#5c94fc 0 55%, #5cbf2a 55% 70%, #c84c0c 70% 100%);
   position: relative;
+  overflow: hidden;
+}
+
+.preview-swatch.mario::before {
+  content: "";
+  position: absolute;
+  left: 18%;
+  bottom: 22%;
+  width: 10px;
+  height: 18px;
+  background: #00a800;
+  border: 1px solid #004d00;
+  box-shadow: 22px 0 0 #fcbc18;
+}
+
+.preview-swatch.blackhole {
+  background:
+    radial-gradient(circle at 50% 50%, #000 0 12%, #f6c28b 14% 16%, #ff8a3d 18% 22%, #1a0a2e 40%, #02040a 70%),
+    radial-gradient(1px 1px at 20% 20%, #fff, transparent),
+    radial-gradient(1px 1px at 80% 30%, #fff, transparent),
+    radial-gradient(1px 1px at 70% 75%, #fff, transparent);
 }
 
 .theme-fx {
