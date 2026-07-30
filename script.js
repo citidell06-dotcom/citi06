@@ -16,14 +16,14 @@
       name: "Sunset",
       rarity: "common",
       cost: 3,
-      desc: "Warm dusk glow over the study zone.",
+      desc: "Golden sun over sea, clouds, and silhouettes.",
     },
     {
       id: "blackhole",
-      name: "Black Hole",
+      name: "TON 618",
       rarity: "epic",
       cost: 15,
-      desc: "Deep space swirl with star sparkles.",
+      desc: "The ultramassive black hole — blazing accretion disk.",
     },
     {
       id: "mario",
@@ -67,6 +67,22 @@
       desc: "Old-school run and jump side-scroller.",
       help: "← → move · ↑ / Space / tap to jump",
     },
+  ];
+
+  const STUDY_RANKS = [
+    { id: "noob", label: "Noob", minMinutes: 0 },
+    { id: "beginner", label: "Beginner", minMinutes: 30 },
+    { id: "pro", label: "Pro", minMinutes: 60 },
+    { id: "master", label: "Master", minMinutes: 90 },
+    { id: "grandmaster", label: "Grandmaster", minMinutes: 120 },
+  ];
+  const REST_SECONDS = 5 * 60;
+  const STREAK_STAGES = [
+    { id: "child", label: "Spark", minDays: 0 },
+    { id: "teen", label: "Ember Kid", minDays: 10 },
+    { id: "adult", label: "Flame", minDays: 20 },
+    { id: "elder", label: "Blaze", minDays: 30 },
+    { id: "legend", label: "Inferno", minDays: 40 },
   ];
 
   const THEME_IDS = new Set(THEMES.map((t) => t.id));
@@ -277,10 +293,53 @@
     gameClose: document.getElementById("game-close"),
     gameRestart: document.getElementById("game-restart"),
     gameQuit: document.getElementById("game-quit"),
+    streakDays: document.getElementById("streak-days"),
+    streakStage: document.getElementById("streak-stage"),
+    streakFire: document.getElementById("streak-fire"),
+    studyRank: document.getElementById("study-rank"),
+    studyHours: document.getElementById("study-hours"),
+    studyFill: document.getElementById("study-fill"),
+    studyBarWrap: document.getElementById("study-bar-wrap"),
+    studyHint: document.getElementById("study-hint"),
+    questsCompleted: document.getElementById("quests-completed"),
+    restMinutes: document.getElementById("rest-minutes"),
+    restSeconds: document.getElementById("rest-seconds"),
   };
+
+  function todayKey() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function daysBetween(a, b) {
+    const ms = Date.parse(`${b}T00:00:00`) - Date.parse(`${a}T00:00:00`);
+    return Math.round(ms / 86400000);
+  }
+
+  function computeStreak(loadedStreak) {
+    const today = todayKey();
+    let streak = Math.max(0, loadedStreak?.streakDays ?? 0);
+    const last = loadedStreak?.lastActiveDate || null;
+
+    if (!last) {
+      streak = 1;
+    } else {
+      const gap = daysBetween(last, today);
+      if (gap === 0) {
+        // same day — keep streak
+      } else if (gap === 1) {
+        streak += 1;
+      } else if (gap > 1) {
+        streak = 1;
+      }
+    }
+
+    return { streakDays: streak, lastActiveDate: today };
+  }
 
   const loaded = loadState();
   const startLevel = Math.min(MAX_LEVEL, Math.max(1, loaded?.level ?? 1));
+  const streakInit = computeStreak(loaded);
   const state = {
     xp: loaded?.xp ?? 0,
     level: startLevel,
@@ -296,6 +355,10 @@
       ? loaded.ownedGames.filter((id) => GAME_IDS.has(id))
       : [],
     activeTheme: THEME_IDS.has(loaded?.activeTheme) ? loaded.activeTheme : null,
+    studySeconds: Math.max(0, loaded?.studySeconds ?? 0),
+    questsCompleted: Math.max(0, loaded?.questsCompleted ?? 0),
+    streakDays: streakInit.streakDays,
+    lastActiveDate: streakInit.lastActiveDate,
   };
 
   function normalizeQuests(quests) {
@@ -493,8 +556,73 @@
         ownedThemes: state.ownedThemes,
         ownedGames: state.ownedGames,
         activeTheme: state.activeTheme,
+        studySeconds: state.studySeconds,
+        questsCompleted: state.questsCompleted,
+        streakDays: state.streakDays,
+        lastActiveDate: state.lastActiveDate,
       })
     );
+  }
+
+  function streakStageFor(days) {
+    let stage = STREAK_STAGES[0];
+    for (const s of STREAK_STAGES) {
+      if (days >= s.minDays) stage = s;
+    }
+    return stage;
+  }
+
+  function studyRankFor(minutes) {
+    let rank = STUDY_RANKS[0];
+    for (const r of STUDY_RANKS) {
+      if (minutes >= r.minMinutes) rank = r;
+    }
+    return rank;
+  }
+
+  function renderStreak() {
+    const stage = streakStageFor(state.streakDays);
+    els.streakDays.textContent = String(state.streakDays);
+    els.streakStage.textContent = stage.label;
+    els.streakFire.dataset.stage = stage.id;
+  }
+
+  function renderStudyStats() {
+    const minutes = state.studySeconds / 60;
+    const hours = state.studySeconds / 3600;
+    const rank = studyRankFor(minutes);
+    const rankIndex = STUDY_RANKS.findIndex((r) => r.id === rank.id);
+    const next = STUDY_RANKS[rankIndex + 1];
+    const floor = rank.minMinutes;
+    const ceiling = next ? next.minMinutes : floor + 30;
+    const pct = next
+      ? Math.min(100, Math.round(((minutes - floor) / (ceiling - floor)) * 100))
+      : 100;
+
+    els.studyHours.textContent = `${hours.toFixed(1)} hours studied`;
+    els.studyRank.textContent = rank.label;
+    els.studyFill.style.width = `${pct}%`;
+    els.studyBarWrap.setAttribute("aria-valuenow", String(pct));
+    els.questsCompleted.textContent = String(state.questsCompleted);
+
+    if (next) {
+      const remain = Math.max(0, ceiling - minutes);
+      els.studyHint.textContent = `${remain.toFixed(0)} min to ${next.label} · ranks every 30 min`;
+    } else {
+      els.studyHint.textContent = "Grandmaster reached — keep stacking hours.";
+    }
+  }
+
+  function addStudySeconds(seconds) {
+    if (seconds <= 0) return;
+    const before = studyRankFor(state.studySeconds / 60);
+    state.studySeconds += seconds;
+    const after = studyRankFor(state.studySeconds / 60);
+    renderStudyStats();
+    saveState();
+    if (before.id !== after.id) {
+      showToast(`Rank up! ${after.label}`);
+    }
   }
 
   function showToast(message) {
@@ -695,8 +823,11 @@
       const difficulty = DIFFICULTY[quest.difficulty] ? quest.difficulty : "medium";
       const xp = questXp(difficulty);
       quest.done = true;
+      state.questsCompleted += 1;
       playCompleteSound(difficulty);
       renderQuests();
+      renderStudyStats();
+      saveState();
       setTimeout(() => addXp(xp, `${DIFFICULTY[difficulty].label} quest`), 180);
     } else {
       quest.done = false;
@@ -743,14 +874,17 @@
 
   function tick() {
     if (remaining <= 0) {
+      const sessionLength = totalForMode;
+      const finishedMode = currentMode;
       stopTimer();
       remaining = 0;
       renderTimer();
 
-      if (currentMode === "focus") {
+      if (finishedMode === "focus") {
+        addStudySeconds(sessionLength);
         addXp(XP_PER_FOCUS, "Focus complete");
       } else {
-        showToast("Break over — back to it!");
+        showToast("Break over — rest time!");
       }
       openRewardModal();
       return;
@@ -928,14 +1062,30 @@
     if (buy) buyGame(buy.dataset.buyGame);
   });
 
+  let restRemaining = REST_SECONDS;
+  let restTimerId = null;
+
+  function renderRestCountdown() {
+    const m = Math.floor(restRemaining / 60);
+    const s = restRemaining % 60;
+    els.restMinutes.textContent = String(m).padStart(2, "0");
+    els.restSeconds.textContent = String(s).padStart(2, "0");
+  }
+
+  function stopRestCountdown() {
+    clearInterval(restTimerId);
+    restTimerId = null;
+  }
+
   function openRewardModal() {
     const owned = GAMES.filter((g) => state.ownedGames.includes(g.id));
     if (!owned.length) {
       els.rewardCopy.textContent =
-        "Buy games in the Token Shop to play them when a timer finishes.";
+        "Rest up from your quests. Buy games in the shop to play during breaks.";
       els.rewardGames.innerHTML = "";
     } else {
-      els.rewardCopy.textContent = "Pick a game you own as a reward break.";
+      els.rewardCopy.textContent =
+        "Rest from your quests — play a game while the countdown runs.";
       els.rewardGames.innerHTML = owned
         .map(
           (g) =>
@@ -943,10 +1093,28 @@
         )
         .join("");
     }
+
+    restRemaining = REST_SECONDS;
+    renderRestCountdown();
+    stopRestCountdown();
+    restTimerId = setInterval(() => {
+      restRemaining -= 1;
+      if (restRemaining <= 0) {
+        restRemaining = 0;
+        renderRestCountdown();
+        stopRestCountdown();
+        closeRewardModal();
+        showToast("Rest over — back to your quests!");
+        return;
+      }
+      renderRestCountdown();
+    }, 1000);
+
     els.rewardModal.hidden = false;
   }
 
   function closeRewardModal() {
+    stopRestCountdown();
     els.rewardModal.hidden = true;
   }
 
@@ -1625,7 +1793,10 @@
   renderTimer();
   renderTokens();
   renderShop();
+  renderStreak();
+  renderStudyStats();
   applyTheme(state.activeTheme);
+  saveState();
 
   // Unlock Web Audio on first user gesture (browser autoplay policy)
   const unlockAudio = () => {

@@ -13,20 +13,73 @@
   <div class="bg-grid" aria-hidden="true"></div>
   <div class="bg-glow" aria-hidden="true"></div>
 
+  <div class="theme-fx" aria-hidden="true">
+    <div class="sunset-scene">
+      <div class="sunset-sky"></div>
+      <div class="sunset-sun"></div>
+      <div class="sunset-sun-glow"></div>
+      <div class="sunset-rays"></div>
+      <div class="sunset-cloud c1"></div>
+      <div class="sunset-cloud c2"></div>
+      <div class="sunset-cloud c3"></div>
+      <div class="sunset-sea"></div>
+      <div class="sunset-sea-shimmer"></div>
+      <div class="sunset-silhouette"></div>
+    </div>
+    <div class="ton618-scene">
+      <div class="ton-stars"></div>
+      <div class="ton-disk"></div>
+      <div class="ton-disk-inner"></div>
+      <div class="ton-photon"></div>
+      <div class="ton-horizon"></div>
+      <div class="ton-jet left"></div>
+      <div class="ton-jet right"></div>
+      <div class="ton-label">TON 618</div>
+    </div>
+  </div>
+
   <header class="site-header">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
       <h1 class="brand-title">study with games</h1>
     </div>
     <p class="brand-tagline">Level up your focus. Clear your quests. Stay in the zone.</p>
-    <div class="token-badge" title="Earn 1 token each level-up">
-      <span class="token-icon" aria-hidden="true">◈</span>
-      <span id="token-count">0</span>
-      <span class="token-label">tokens</span>
+    <div class="header-stats">
+      <div class="token-badge" title="Earn 1 token each level-up">
+        <span class="token-icon" aria-hidden="true">◈</span>
+        <span id="token-count">0</span>
+        <span class="token-label">tokens</span>
+      </div>
+      <div class="streak-badge" id="streak-badge" title="Daily streak">
+        <div class="streak-fire" id="streak-fire" data-stage="child" aria-hidden="true">
+          <div class="fire-body"></div>
+          <div class="fire-face">
+            <span class="fire-eye"></span>
+            <span class="fire-eye"></span>
+            <span class="fire-mouth"></span>
+          </div>
+        </div>
+        <div class="streak-meta">
+          <span class="streak-count"><span id="streak-days">0</span> day streak</span>
+          <span class="streak-stage" id="streak-stage">Spark</span>
+        </div>
+      </div>
     </div>
   </header>
 
   <main class="layout">
+    <section class="panel stats-panel" aria-labelledby="stats-heading">
+      <div class="panel-head">
+        <h2 id="stats-heading">Study Stats</h2>
+        <span class="panel-chip" id="study-rank">Noob</span>
+      </div>
+      <div class="study-hours" id="study-hours">0.0 hours studied</div>
+      <div class="study-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="study-bar-wrap">
+        <div class="study-fill" id="study-fill"></div>
+      </div>
+      <p class="study-hint" id="study-hint">Next rank in 30 min · Complete focus sessions to climb.</p>
+      <p class="quest-stat">Quests completed: <strong id="quests-completed">0</strong></p>
+    </section>
     <section class="panel xp-panel" aria-labelledby="xp-heading">
       <div class="panel-head">
         <h2 id="xp-heading">Level &amp; XP</h2>
@@ -146,12 +199,16 @@
   </main>
 
   <div class="modal" id="reward-modal" hidden>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="reward-title">
+    <div class="modal-card modal-card-rest" role="dialog" aria-modal="true" aria-labelledby="reward-title">
       <button type="button" class="modal-close" id="reward-close" aria-label="Close">×</button>
-      <h2 id="reward-title">Timer complete!</h2>
-      <p class="modal-copy" id="reward-copy">Pick a game you own as a reward break.</p>
+      <h2 id="reward-title">Rest break</h2>
+      <p class="modal-copy" id="reward-copy">Play a game or just breathe. Quests can wait.</p>
+      <div class="rest-countdown" aria-live="polite">
+        <span id="rest-minutes">5</span><span class="timer-colon">:</span><span id="rest-seconds">00</span>
+      </div>
+      <p class="rest-label">time left to rest &amp; play</p>
       <div class="reward-games" id="reward-games"></div>
-      <button type="button" class="btn btn-ghost" id="reward-skip">Skip</button>
+      <button type="button" class="btn btn-ghost" id="reward-skip">Skip rest</button>
     </div>
   </div>
 
