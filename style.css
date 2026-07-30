@@ -430,12 +430,13 @@ body {
 
 .quest-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   margin-bottom: 1rem;
 }
 
-.quest-form input {
-  flex: 1;
+.quest-form input[type="text"] {
+  flex: 1 1 160px;
   min-width: 0;
   font: inherit;
   color: var(--text);
@@ -447,13 +448,84 @@ body {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.quest-form input::placeholder {
+.quest-form input[type="text"]::placeholder {
   color: #6e8eaa;
 }
 
-.quest-form input:focus {
+.quest-form input[type="text"]:focus {
   border-color: var(--neon);
   box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+}
+
+.difficulty-picker {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(4, 12, 24, 0.65);
+}
+
+.diff-option {
+  position: relative;
+  flex: 1;
+  cursor: pointer;
+}
+
+.diff-option input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.diff-option span {
+  display: block;
+  padding: 0.65rem 0.7rem;
+  font-family: var(--font-display);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+  border-right: 1px solid rgba(0, 229, 255, 0.12);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.diff-option:last-child span {
+  border-right: none;
+}
+
+.diff-option input:focus-visible + span {
+  outline: 2px solid var(--neon);
+  outline-offset: -2px;
+}
+
+.diff-option input:checked + span {
+  color: var(--text);
+}
+
+.diff-option[data-diff="easy"] input:checked + span,
+.diff-option:nth-child(1) input:checked + span {
+  color: #39ffb6;
+  background: rgba(57, 255, 182, 0.12);
+}
+
+.diff-option:nth-child(2) input:checked + span {
+  color: #ffb43c;
+  background: rgba(255, 180, 60, 0.14);
+}
+
+.diff-option:nth-child(3) input:checked + span {
+  color: #ff5c7a;
+  background: rgba(255, 92, 122, 0.14);
+}
+
+.quest-form > .btn {
+  flex: 0 0 auto;
 }
 
 .btn {
@@ -557,6 +629,47 @@ body {
   letter-spacing: 0.04em;
   color: var(--neon);
   flex-shrink: 0;
+}
+
+.quest-diff {
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.quest-diff.easy {
+  color: #39ffb6;
+  border-color: rgba(57, 255, 182, 0.35);
+  background: rgba(57, 255, 182, 0.08);
+}
+
+.quest-diff.medium {
+  color: #ffb43c;
+  border-color: rgba(255, 180, 60, 0.4);
+  background: rgba(255, 180, 60, 0.1);
+}
+
+.quest-diff.hard {
+  color: #ff5c7a;
+  border-color: rgba(255, 92, 122, 0.4);
+  background: rgba(255, 92, 122, 0.1);
+}
+
+.quest-item.easy {
+  border-color: rgba(57, 255, 182, 0.18);
+}
+
+.quest-item.medium {
+  border-color: rgba(255, 180, 60, 0.22);
+}
+
+.quest-item.hard {
+  border-color: rgba(255, 92, 122, 0.22);
 }
 
 .quest-delete {
@@ -671,6 +784,14 @@ body {
 @media (max-width: 520px) {
   .quest-form {
     flex-direction: column;
+  }
+
+  .difficulty-picker {
+    width: 100%;
+  }
+
+  .quest-form > .btn {
+    width: 100%;
   }
 
   .timer-modes {

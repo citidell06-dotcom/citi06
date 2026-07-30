@@ -1,9 +1,14 @@
 (() => {
   const STORAGE_KEY = "study-with-games-v1";
-  const XP_PER_QUEST = 20;
   const XP_PER_FOCUS = 25;
   const BASE_XP = 100;
   const MAX_LEVEL = 10;
+
+  const DIFFICULTY = {
+    easy: { xp: 15, label: "Easy" },
+    medium: { xp: 30, label: "Medium" },
+    hard: { xp: 45, label: "Hard" },
+  };
 
   const ENEMY_NAMES = [
     "Sloth Imp",
@@ -50,8 +55,20 @@
   const state = {
     xp: loaded?.xp ?? 0,
     level: Math.min(MAX_LEVEL, Math.max(1, loaded?.level ?? 1)),
-    quests: Array.isArray(loaded?.quests) ? loaded.quests : [],
+    quests: normalizeQuests(loaded?.quests),
   };
+
+  function normalizeQuests(quests) {
+    if (!Array.isArray(quests)) return [];
+    return quests.map((q) => ({
+      ...q,
+      difficulty: DIFFICULTY[q.difficulty] ? q.difficulty : "medium",
+    }));
+  }
+
+  function questXp(difficulty) {
+    return (DIFFICULTY[difficulty] || DIFFICULTY.medium).xp;
+  }
 
   let remaining = 25 * 60;
   let totalForMode = 25 * 60;
@@ -92,13 +109,21 @@
     tone(ctx, { freq: 780, type: "sine", start: t + 0.04, dur: 0.1, gain: 0.05, attack: 0.005, release: 0.07 });
   }
 
-  /** Satisfying quest-complete chime */
-  function playCompleteSound() {
+  /** Easy complete — soft two-note ding */
+  function playEasyCompleteSound() {
     const ctx = getAudioCtx();
     if (!ctx) return;
     const t = ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99];
-    notes.forEach((freq, i) => {
+    tone(ctx, { freq: 440, type: "sine", start: t, dur: 0.16, gain: 0.06, attack: 0.01, release: 0.1 });
+    tone(ctx, { freq: 554.37, type: "triangle", start: t + 0.08, dur: 0.18, gain: 0.05, attack: 0.01, release: 0.1 });
+  }
+
+  /** Medium complete — brighter three-note chime */
+  function playMediumCompleteSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [523.25, 659.25, 783.99].forEach((freq, i) => {
       tone(ctx, {
         freq,
         type: "triangle",
@@ -109,6 +134,40 @@
         release: 0.12,
       });
     });
+  }
+
+  /** Hard complete — punchy fanfare */
+  function playHardCompleteSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const notes = [392, 523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, i) => {
+      tone(ctx, {
+        freq,
+        type: i % 2 === 0 ? "square" : "triangle",
+        start: t + i * 0.065,
+        dur: 0.26,
+        gain: 0.045,
+        attack: 0.008,
+        release: 0.12,
+      });
+      tone(ctx, {
+        freq: freq * 2,
+        type: "sine",
+        start: t + i * 0.065,
+        dur: 0.26,
+        gain: 0.02,
+        attack: 0.008,
+        release: 0.12,
+      });
+    });
+  }
+
+  function playCompleteSound(difficulty) {
+    if (difficulty === "hard") playHardCompleteSound();
+    else if (difficulty === "medium") playMediumCompleteSound();
+    else playEasyCompleteSound();
   }
 
   /** Minecraft-style XP / level-up sparkle when the bar fills */
@@ -300,8 +359,10 @@
     els.questEmpty.hidden = state.quests.length > 0;
 
     state.quests.forEach((quest) => {
+      const difficulty = DIFFICULTY[quest.difficulty] ? quest.difficulty : "medium";
+      const xp = questXp(difficulty);
       const li = document.createElement("li");
-      li.className = `quest-item${quest.done ? " done" : ""}`;
+      li.className = `quest-item ${difficulty}${quest.done ? " done" : ""}`;
       li.dataset.id = quest.id;
 
       const check = document.createElement("input");
@@ -314,9 +375,13 @@
       text.className = "quest-text";
       text.textContent = quest.text;
 
+      const diffTag = document.createElement("span");
+      diffTag.className = `quest-diff ${difficulty}`;
+      diffTag.textContent = DIFFICULTY[difficulty].label;
+
       const xpTag = document.createElement("span");
       xpTag.className = "quest-xp";
-      xpTag.textContent = `+${XP_PER_QUEST}`;
+      xpTag.textContent = `+${xp}`;
 
       const del = document.createElement("button");
       del.type = "button";
@@ -327,16 +392,18 @@
       check.addEventListener("change", () => toggleQuest(quest.id));
       del.addEventListener("click", () => deleteQuest(quest.id));
 
-      li.append(check, text, xpTag, del);
+      li.append(check, text, diffTag, xpTag, del);
       els.questList.appendChild(li);
     });
   }
 
-  function addQuest(text) {
+  function addQuest(text, difficulty) {
+    const diff = DIFFICULTY[difficulty] ? difficulty : "medium";
     state.quests.unshift({
       id: crypto.randomUUID(),
       text,
       done: false,
+      difficulty: diff,
     });
     playAddSound();
     renderQuests();
@@ -348,11 +415,12 @@
     if (!quest) return;
 
     if (!quest.done) {
+      const difficulty = DIFFICULTY[quest.difficulty] ? quest.difficulty : "medium";
+      const xp = questXp(difficulty);
       quest.done = true;
-      playCompleteSound();
+      playCompleteSound(difficulty);
       renderQuests();
-      // Slight delay so completion and XP level-up don't fully overlap
-      setTimeout(() => addXp(XP_PER_QUEST, "Quest cleared"), 180);
+      setTimeout(() => addXp(xp, `${DIFFICULTY[difficulty].label} quest`), 180);
     } else {
       quest.done = false;
       renderQuests();
@@ -449,7 +517,9 @@
     e.preventDefault();
     const text = els.questInput.value.trim();
     if (!text) return;
-    addQuest(text);
+    const selected = els.questForm.querySelector('input[name="difficulty"]:checked');
+    const difficulty = selected?.value || "medium";
+    addQuest(text, difficulty);
     els.questInput.value = "";
     els.questInput.focus();
   });
@@ -470,4 +540,13 @@
   renderXp();
   renderQuests();
   renderTimer();
+
+  // Unlock Web Audio on first user gesture (browser autoplay policy)
+  const unlockAudio = () => {
+    getAudioCtx();
+    window.removeEventListener("pointerdown", unlockAudio);
+    window.removeEventListener("keydown", unlockAudio);
+  };
+  window.addEventListener("pointerdown", unlockAudio);
+  window.addEventListener("keydown", unlockAudio);
 })();
