@@ -3,6 +3,20 @@
   const XP_PER_QUEST = 20;
   const XP_PER_FOCUS = 25;
   const BASE_XP = 100;
+  const MAX_LEVEL = 10;
+
+  const ENEMY_NAMES = [
+    "Sloth Imp",
+    "Distraction Sprite",
+    "Scroll Wraith",
+    "Deadline Drake",
+    "Procrastibat",
+    "Focus Phantom",
+    "Cram Goblin",
+    "Burnout Beast",
+    "Void Tutor",
+    "Final Boss",
+  ];
 
   const els = {
     questForm: document.getElementById("quest-form"),
@@ -16,6 +30,11 @@
     xpFill: document.getElementById("xp-fill"),
     xpBarWrap: document.getElementById("xp-bar-wrap"),
     xpHint: document.getElementById("xp-hint"),
+    enemy: document.getElementById("enemy"),
+    enemyName: document.getElementById("enemy-name"),
+    enemyPower: document.getElementById("enemy-power"),
+    enemyAtkFill: document.getElementById("enemy-atk-fill"),
+    enemyHpFill: document.getElementById("enemy-hp-fill"),
     timerDisplay: document.getElementById("timer-display"),
     timerMinutes: document.getElementById("timer-minutes"),
     timerSeconds: document.getElementById("timer-seconds"),
@@ -27,10 +46,11 @@
     toast: document.getElementById("toast"),
   };
 
-  const state = loadState() || {
-    xp: 0,
-    level: 1,
-    quests: [],
+  const loaded = loadState();
+  const state = {
+    xp: loaded?.xp ?? 0,
+    level: Math.min(MAX_LEVEL, Math.max(1, loaded?.level ?? 1)),
+    quests: Array.isArray(loaded?.quests) ? loaded.quests : [],
   };
 
   let remaining = 25 * 60;
@@ -42,6 +62,17 @@
 
   function xpForLevel(level) {
     return BASE_XP + (level - 1) * 50;
+  }
+
+  function enemyStats(level) {
+    const tier = Math.min(MAX_LEVEL, Math.max(1, level));
+    return {
+      name: ENEMY_NAMES[tier - 1],
+      power: 10 + tier * 8,
+      atk: 8 + tier * 9,
+      hp: 20 + tier * 14,
+      scale: 0.92 + tier * 0.045,
+    };
   }
 
   function loadState() {
@@ -78,39 +109,91 @@
   }
 
   function addXp(amount, reason) {
+    if (state.level >= MAX_LEVEL) {
+      state.xp = xpForLevel(MAX_LEVEL);
+      renderXp();
+      saveState();
+      showToast("Max level — foe is at full power");
+      return;
+    }
+
     state.xp += amount;
     let leveled = false;
+    let levelsGained = 0;
 
-    while (state.xp >= xpForLevel(state.level)) {
+    while (state.level < MAX_LEVEL && state.xp >= xpForLevel(state.level)) {
       state.xp -= xpForLevel(state.level);
       state.level += 1;
       leveled = true;
+      levelsGained += 1;
+    }
+
+    if (state.level >= MAX_LEVEL) {
+      state.level = MAX_LEVEL;
+      state.xp = Math.min(state.xp, xpForLevel(MAX_LEVEL));
     }
 
     renderXp();
     saveState();
 
     if (leveled) {
-      showToast(`Level up! Now LVL ${state.level}`);
+      const foe = enemyStats(state.level).name;
+      if (state.level >= MAX_LEVEL) {
+        showToast(`LVL ${MAX_LEVEL}! Final Boss awakened`);
+      } else {
+        showToast(`Level up! ${foe} grew stronger`);
+      }
+      if (levelsGained > 1) {
+        // keep toast concise; already announced strongest foe
+      }
     } else {
       showToast(`+${amount} XP · ${reason}`);
     }
   }
 
-  function renderXp() {
-    const needed = xpForLevel(state.level);
-    const pct = Math.min(100, Math.round((state.xp / needed) * 100));
+  function renderEnemy() {
+    const stats = enemyStats(state.level);
+    const maxAtk = 8 + MAX_LEVEL * 9;
+    const maxHp = 20 + MAX_LEVEL * 14;
+    const atkPct = Math.round((stats.atk / maxAtk) * 100);
+    const hpPct = Math.round((stats.hp / maxHp) * 100);
 
-    els.levelBadge.textContent = `LVL ${state.level}`;
-    els.xpCurrent.textContent = String(state.xp);
+    els.enemy.dataset.tier = String(state.level);
+    els.enemy.classList.toggle("maxed", state.level >= MAX_LEVEL);
+    els.enemy.style.setProperty("--enemy-scale", String(stats.scale));
+    els.enemy.setAttribute(
+      "aria-label",
+      `${stats.name}, power ${stats.power}, attack ${stats.atk}, hp ${stats.hp}`
+    );
+    els.enemyName.textContent = stats.name;
+    els.enemyPower.textContent = `PWR ${stats.power}`;
+    els.enemyAtkFill.style.width = `${atkPct}%`;
+    els.enemyHpFill.style.width = `${hpPct}%`;
+  }
+
+  function renderXp() {
+    const atMax = state.level >= MAX_LEVEL;
+    const needed = xpForLevel(state.level);
+    const pct = atMax
+      ? 100
+      : Math.min(100, Math.round((state.xp / needed) * 100));
+
+    els.levelBadge.textContent = `LVL ${state.level} / ${MAX_LEVEL}`;
+    els.xpCurrent.textContent = String(atMax ? needed : state.xp);
     els.xpNeeded.textContent = String(needed);
     els.xpFill.style.width = `${pct}%`;
     els.xpBarWrap.setAttribute("aria-valuenow", String(pct));
     els.xpBarWrap.setAttribute("aria-valuemax", "100");
-    els.xpHint.textContent =
-      state.level === 1 && state.xp === 0
-        ? "Complete quests and focus sessions to earn XP."
-        : `${needed - state.xp} XP to reach LVL ${state.level + 1}.`;
+
+    if (atMax) {
+      els.xpHint.textContent = "Max level reached. The Final Boss is at full power.";
+    } else if (state.level === 1 && state.xp === 0) {
+      els.xpHint.textContent = "Complete quests and focus sessions to earn XP.";
+    } else {
+      els.xpHint.textContent = `${needed - state.xp} XP to reach LVL ${state.level + 1}.`;
+    }
+
+    renderEnemy();
   }
 
   function renderQuests() {

@@ -25,18 +25,52 @@
     <section class="panel xp-panel" aria-labelledby="xp-heading">
       <div class="panel-head">
         <h2 id="xp-heading">Level &amp; XP</h2>
-        <span class="panel-chip" id="level-badge">LVL 1</span>
+        <span class="panel-chip" id="level-badge">LVL 1 / 10</span>
       </div>
-      <div class="xp-meta">
-        <span id="xp-current">0</span>
-        <span class="xp-sep">/</span>
-        <span id="xp-needed">100</span>
-        <span class="xp-label">XP</span>
+
+      <div class="xp-row">
+        <div class="xp-main">
+          <div class="xp-meta">
+            <span id="xp-current">0</span>
+            <span class="xp-sep">/</span>
+            <span id="xp-needed">100</span>
+            <span class="xp-label">XP</span>
+          </div>
+          <div class="xp-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="xp-bar-wrap">
+            <div class="xp-fill" id="xp-fill"></div>
+          </div>
+          <p class="xp-hint" id="xp-hint">Complete quests and focus sessions to earn XP.</p>
+        </div>
+
+        <aside class="enemy" id="enemy" data-tier="1" aria-label="Study foe">
+          <div class="enemy-sprite" aria-hidden="true">
+            <svg class="enemy-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+              <ellipse class="enemy-shadow" cx="32" cy="56" rx="16" ry="4" />
+              <path class="enemy-body" d="M18 40c0-12 6-22 14-22s14 10 14 22c0 8-4 14-14 14s-14-6-14-14z" />
+              <circle class="enemy-eye" cx="26" cy="34" r="5" />
+              <circle class="enemy-eye" cx="38" cy="34" r="5" />
+              <circle class="enemy-pupil" cx="27" cy="35" r="2" />
+              <circle class="enemy-pupil" cx="39" cy="35" r="2" />
+              <path class="enemy-horn left" d="M20 22l-6-10 10 4z" />
+              <path class="enemy-horn right" d="M44 22l6-10-10 4z" />
+              <path class="enemy-mouth" d="M26 44h12l-2 3h-8z" />
+              <path class="enemy-spike" d="M32 12l3 8h-6z" />
+            </svg>
+          </div>
+          <div class="enemy-info">
+            <p class="enemy-name" id="enemy-name">Sloth Imp</p>
+            <p class="enemy-power" id="enemy-power">PWR 12</p>
+            <div class="enemy-stat">
+              <span>ATK</span>
+              <div class="enemy-stat-track"><div class="enemy-stat-fill atk" id="enemy-atk-fill"></div></div>
+            </div>
+            <div class="enemy-stat">
+              <span>HP</span>
+              <div class="enemy-stat-track"><div class="enemy-stat-fill hp" id="enemy-hp-fill"></div></div>
+            </div>
+          </div>
+        </aside>
       </div>
-      <div class="xp-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="xp-bar-wrap">
-        <div class="xp-fill" id="xp-fill"></div>
-      </div>
-      <p class="xp-hint" id="xp-hint">Complete quests and focus sessions to earn XP.</p>
     </section>
 
     <section class="panel quest-panel" aria-labelledby="quest-heading">
