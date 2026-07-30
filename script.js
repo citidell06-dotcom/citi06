@@ -1,5 +1,5 @@
 (() => {
-  const STORAGE_KEY = "study-with-games-v1";
+  const STORAGE_KEY = "study-with-games-v2";
   const XP_PER_FOCUS = 25;
   const BASE_XP = 100;
   const MAX_LEVEL = 100;
@@ -316,6 +316,7 @@
     questPanelActive: document.getElementById("quest-panel-active"),
     questPanelCompleted: document.getElementById("quest-panel-completed"),
     questTabs: [...document.querySelectorAll(".quest-tab")],
+    resetProgress: document.getElementById("reset-progress"),
   };
 
   function todayKey() {
@@ -614,6 +615,56 @@
         lastActiveDate: state.lastActiveDate,
       })
     );
+  }
+
+  function resetAllProgress() {
+    const ok = window.confirm(
+      "Reset ALL progress?\n\nThis clears levels, XP, tokens, quests, study time, streak, themes, and games."
+    );
+    if (!ok) return;
+
+    stopTimer();
+    stopRestCountdown();
+    closeRewardModal();
+    closeGameModal();
+
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem("study-with-games-v1");
+
+    state.xp = 0;
+    state.level = 1;
+    state.quests = [];
+    state.tokens = 0;
+    state.ownedThemes = [];
+    state.ownedGames = [];
+    state.activeTheme = null;
+    state.studySeconds = 0;
+    state.questsCompleted = 0;
+    state.completedLog = [];
+    state.streakDays = 1;
+    state.lastActiveDate = todayKey();
+
+    remaining = 25 * 60;
+    totalForMode = 25 * 60;
+    currentMode = "focus";
+    running = false;
+    lastEnemyKey = "";
+
+    applyTheme(null);
+    setQuestTab("active");
+    els.modeButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.mode === "focus");
+    });
+
+    renderXp();
+    renderQuests();
+    renderTimer();
+    renderTokens();
+    renderShop();
+    renderStreak();
+    renderStudyStats();
+    saveState();
+    showToast("Progress reset");
   }
 
   function streakStageFor(days) {
@@ -2285,6 +2336,11 @@
   els.questTabs.forEach((btn) => {
     btn.addEventListener("click", () => setQuestTab(btn.dataset.tab));
   });
+
+  els.resetProgress.addEventListener("click", resetAllProgress);
+
+  // Drop legacy save so prior progress/time starts fresh
+  localStorage.removeItem("study-with-games-v1");
 
   renderXp();
   renderQuests();
