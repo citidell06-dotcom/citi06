@@ -56,7 +56,7 @@
       rarity: "epic",
       cost: RARITY_COST.epic,
       desc: "Blast waves of invaders.",
-      help: "← → move · Space / tap to shoot",
+      help: "← → move · Space / tap to shoot · +guns every 100 pts",
     },
     {
       id: "tetris",
@@ -1475,22 +1475,62 @@
     const H = 480;
     els.gameCanvas.width = W;
     els.gameCanvas.height = H;
-    let player, bullets, enemies, score, over, spawnTimer, last;
+    let player, bullets, enemies, score, over, spawnTimer, last, fireLevel;
 
     function reset() {
       player = { x: W / 2, y: H - 40, w: 28, h: 16 };
       bullets = [];
       enemies = [];
       score = 0;
+      fireLevel = 0;
       over = false;
       spawnTimer = 0;
       setScore(0);
       last = performance.now();
     }
 
+    function currentFireLevel() {
+      return Math.floor(score / 100);
+    }
+
+    function maxBullets() {
+      // Start with 4; +2 max on screen every 100 points
+      return 4 + currentFireLevel() * 2;
+    }
+
+    function shotCount() {
+      // 1 stream, then +1 every 100 points (cap at 5)
+      return Math.min(5, 1 + currentFireLevel());
+    }
+
     function shoot() {
-      if (bullets.length > 4) return;
-      bullets.push({ x: player.x, y: player.y - 10, vy: -8 });
+      const max = maxBullets();
+      const count = shotCount();
+      if (bullets.length + count > max) return;
+
+      const spread = count === 1 ? [0] : Array.from({ length: count }, (_, i) => {
+        const t = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
+        return t * Math.min(14, 4 + currentFireLevel() * 2);
+      });
+
+      spread.forEach((dx) => {
+        bullets.push({
+          x: player.x + dx,
+          y: player.y - 10,
+          vy: -8 - Math.min(4, currentFireLevel() * 0.4),
+          vx: dx * 0.08,
+        });
+      });
+    }
+
+    function addScore(amount) {
+      const before = currentFireLevel();
+      score += amount;
+      setScore(score);
+      fireLevel = currentFireLevel();
+      if (fireLevel > before) {
+        showToast(`Fire power ×${shotCount()}!`);
+      }
     }
 
     function draw() {
@@ -1498,6 +1538,12 @@
       gctx.fillRect(0, 0, W, H);
       gctx.fillStyle = "#39ffb6";
       gctx.fillRect(player.x - player.w / 2, player.y, player.w, player.h);
+      // little gun tips based on fire level
+      if (shotCount() > 1) {
+        gctx.fillStyle = "#00e5ff";
+        gctx.fillRect(player.x - player.w / 2 - 2, player.y + 4, 4, 8);
+        gctx.fillRect(player.x + player.w / 2 - 2, player.y + 4, 4, 8);
+      }
       gctx.fillStyle = "#00e5ff";
       bullets.forEach((b) => gctx.fillRect(b.x - 2, b.y, 4, 10));
       enemies.forEach((en) => {
@@ -1509,6 +1555,10 @@
         gctx.closePath();
         gctx.fill();
       });
+      gctx.fillStyle = "rgba(232, 244, 255, 0.7)";
+      gctx.font = "12px Orbitron, sans-serif";
+      gctx.textAlign = "left";
+      gctx.fillText(`GUN ×${shotCount()}`, 10, 18);
       if (over) {
         gctx.fillStyle = "rgba(0,0,0,0.55)";
         gctx.fillRect(0, 0, W, H);
@@ -1533,7 +1583,7 @@
       player.x = Math.max(20, Math.min(W - 20, player.x));
 
       spawnTimer += dt;
-      if (spawnTimer > 700) {
+      if (spawnTimer > Math.max(320, 700 - currentFireLevel() * 40)) {
         spawnTimer = 0;
         enemies.push({
           x: 30 + Math.random() * (W - 60),
@@ -1545,8 +1595,9 @@
 
       bullets.forEach((b) => {
         b.y += b.vy;
+        b.x += b.vx || 0;
       });
-      bullets = bullets.filter((b) => b.y > -20);
+      bullets = bullets.filter((b) => b.y > -20 && b.x > -10 && b.x < W + 10);
 
       enemies.forEach((en) => {
         en.y += en.vy * dt;
@@ -1566,8 +1617,7 @@
           if (Math.abs(b.x - en.x) < 14 && Math.abs(b.y - en.y) < 12) {
             bullets.splice(j, 1);
             enemies.splice(i, 1);
-            score += en.elite ? 50 : 20;
-            setScore(score);
+            addScore(en.elite ? 50 : 20);
             break;
           }
         }
