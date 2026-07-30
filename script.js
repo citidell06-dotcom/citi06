@@ -10,29 +10,166 @@
     hard: { xp: 45, label: "Hard" },
   };
 
-  const ENEMY_TITLES = [
-    "Sloth Imp",
-    "Distraction Sprite",
-    "Scroll Wraith",
-    "Deadline Drake",
-    "Procrastibat",
-    "Focus Phantom",
-    "Cram Goblin",
-    "Burnout Beast",
-    "Void Tutor",
-    "Final Boss",
+  const ENEMY_FORMS = [
+    {
+      name: "Sloth Imp",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="14" ry="3.5"/>
+        <path class="enemy-body" d="M20 40c0-11 5-20 12-20s12 9 12 20c0 7-4 12-12 12s-12-5-12-12z"/>
+        <circle class="enemy-eye" cx="27" cy="35" r="4.5"/><circle class="enemy-eye" cx="37" cy="35" r="4.5"/>
+        <circle class="enemy-pupil" cx="28" cy="36" r="1.8"/><circle class="enemy-pupil" cx="38" cy="36" r="1.8"/>
+        <path class="enemy-horn" d="M22 24l-4-8 8 3z"/><path class="enemy-horn" d="M42 24l4-8-8 3z"/>
+        <path class="enemy-mouth" d="M27 44h10l-1.5 2.5h-7z"/>
+        <path class="enemy-phase-extra enemy-spike" d="M32 14l2.5 6h-5z"/>
+        <path class="enemy-phase-extra enemy-claw" d="M18 46l-5 4 6-1z"/>
+        <path class="enemy-phase-extra enemy-claw" d="M46 46l5 4-6-1z"/>
+      `,
+    },
+    {
+      name: "Distraction Sprite",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="15" ry="3.5"/>
+        <path class="enemy-body" d="M16 38c2-14 10-22 16-22s14 8 16 22c1 8-5 14-16 14s-17-6-16-14z"/>
+        <path class="enemy-accent" d="M18 28c-6-2-8-10-4-14 4 3 7 8 4 14z"/>
+        <path class="enemy-accent" d="M46 28c6-2 8-10 4-14-4 3-7 8-4 14z"/>
+        <circle class="enemy-eye" cx="26" cy="34" r="5"/><circle class="enemy-eye" cx="38" cy="34" r="5"/>
+        <circle class="enemy-pupil" cx="27" cy="35" r="2"/><circle class="enemy-pupil" cx="39" cy="35" r="2"/>
+        <path class="enemy-mouth" d="M28 44h8v2h-8z"/>
+        <circle class="enemy-phase-extra enemy-aura" cx="32" cy="34" r="18"/>
+        <path class="enemy-phase-extra enemy-spike" d="M32 10l3 7h-6z"/>
+      `,
+    },
+    {
+      name: "Scroll Wraith",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="13" ry="3"/>
+        <path class="enemy-body" d="M24 18h16c3 0 5 3 5 6v20c0 8-5 14-13 14s-13-6-13-14V24c0-3 2-6 5-6z"/>
+        <path class="enemy-accent" d="M22 22h20v3H22z"/><path class="enemy-accent" d="M22 30h20v2H22z"/>
+        <circle class="enemy-eye" cx="27" cy="40" r="3.5"/><circle class="enemy-eye" cx="37" cy="40" r="3.5"/>
+        <circle class="enemy-pupil" cx="27" cy="40" r="1.4"/><circle class="enemy-pupil" cx="37" cy="40" r="1.4"/>
+        <path class="enemy-phase-extra enemy-horn" d="M20 16l-6-8 9 4z"/>
+        <path class="enemy-phase-extra enemy-horn" d="M44 16l6-8-9 4z"/>
+        <path class="enemy-phase-extra enemy-armor" d="M26 48h12l-2 4H28z"/>
+      `,
+    },
+    {
+      name: "Deadline Drake",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="16" ry="3.5"/>
+        <path class="enemy-body" d="M14 42c2-16 10-26 18-26s16 10 18 26c1 8-6 14-18 14S13 50 14 42z"/>
+        <path class="enemy-accent" d="M12 34l-8-2 8-4z"/><path class="enemy-accent" d="M52 34l8-2-8-4z"/>
+        <path class="enemy-horn" d="M22 18l-5-12 10 5z"/><path class="enemy-horn" d="M42 18l5-12-10 5z"/>
+        <circle class="enemy-eye" cx="26" cy="34" r="5"/><circle class="enemy-eye" cx="38" cy="34" r="5"/>
+        <circle class="enemy-pupil" cx="27" cy="35" r="2"/><circle class="enemy-pupil" cx="39" cy="35" r="2"/>
+        <path class="enemy-mouth" d="M26 45h12l-3 4h-6z"/>
+        <path class="enemy-phase-extra enemy-spike" d="M32 8l3.5 8h-7z"/>
+        <path class="enemy-phase-extra enemy-claw" d="M18 50l-6 5 8-2z"/><path class="enemy-phase-extra enemy-claw" d="M46 50l6 5-8-2z"/>
+      `,
+    },
+    {
+      name: "Procrastibat",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="15" ry="3"/>
+        <path class="enemy-accent" d="M8 30c8-2 14 2 18 10L20 44C12 40 6 36 8 30z"/>
+        <path class="enemy-accent" d="M56 30c-8-2-14 2-18 10l6 4c8-4 14-8 12-14z"/>
+        <path class="enemy-body" d="M22 28c0-10 4-16 10-16s10 6 10 16c0 10-3 18-10 18s-10-8-10-18z"/>
+        <path class="enemy-horn" d="M24 16l-3-8 7 3z"/><path class="enemy-horn" d="M40 16l3-8-7 3z"/>
+        <circle class="enemy-eye" cx="28" cy="30" r="4"/><circle class="enemy-eye" cx="36" cy="30" r="4"/>
+        <circle class="enemy-pupil" cx="29" cy="31" r="1.6"/><circle class="enemy-pupil" cx="37" cy="31" r="1.6"/>
+        <path class="enemy-mouth" d="M29 40h6l-1 2h-4z"/>
+        <circle class="enemy-phase-extra enemy-aura" cx="32" cy="32" r="20"/>
+        <path class="enemy-phase-extra enemy-spike" d="M32 6l2.5 6h-5z"/>
+      `,
+    },
+    {
+      name: "Focus Phantom",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="12" ry="3"/>
+        <path class="enemy-body" d="M20 20c0-6 5-12 12-12s12 6 12 12c0 4-1 8-1 12 2 6 4 12-11 18-15-6-13-12-11-18 0-4-1-8-1-12z"/>
+        <circle class="enemy-eye" cx="27" cy="24" r="4"/><circle class="enemy-eye" cx="37" cy="24" r="4"/>
+        <circle class="enemy-pupil" cx="27" cy="24" r="1.6"/><circle class="enemy-pupil" cx="37" cy="24" r="1.6"/>
+        <path class="enemy-mouth" d="M28 34h8v2h-8z"/>
+        <path class="enemy-phase-extra enemy-armor" d="M24 16h16v3H24z"/>
+        <path class="enemy-phase-extra enemy-horn" d="M18 18l-7-6 9 2z"/><path class="enemy-phase-extra enemy-horn" d="M46 18l7-6-9 2z"/>
+        <circle class="enemy-phase-extra enemy-aura" cx="32" cy="28" r="17"/>
+      `,
+    },
+    {
+      name: "Cram Goblin",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="15" ry="3.5"/>
+        <path class="enemy-body" d="M18 36c0-12 6-20 14-20s14 8 14 20c0 10-5 16-14 16s-14-6-14-16z"/>
+        <path class="enemy-accent" d="M16 40h32v6c0 4-7 8-16 8s-16-4-16-8z"/>
+        <circle class="enemy-eye" cx="26" cy="32" r="5"/><circle class="enemy-eye" cx="38" cy="32" r="5"/>
+        <circle class="enemy-pupil" cx="27" cy="33" r="2"/><circle class="enemy-pupil" cx="39" cy="33" r="2"/>
+        <path class="enemy-horn" d="M22 18l-6-10 10 4z"/><path class="enemy-horn" d="M42 18l6-10-10 4z"/>
+        <path class="enemy-mouth" d="M26 42h12l-2 3h-8z"/>
+        <path class="enemy-phase-extra enemy-spike" d="M28 10l2 5h-4z"/><path class="enemy-phase-extra enemy-spike" d="M36 10l2 5h-4z"/>
+        <path class="enemy-phase-extra enemy-claw" d="M17 48l-5 5 7-1z"/><path class="enemy-phase-extra enemy-claw" d="M47 48l5 5-7-1z"/>
+      `,
+    },
+    {
+      name: "Burnout Beast",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="17" ry="3.5"/>
+        <path class="enemy-body" d="M12 40c1-14 9-24 20-24s19 10 20 24c1 9-7 15-20 15S11 49 12 40z"/>
+        <path class="enemy-armor" d="M18 28h28l-2 8H20z"/>
+        <circle class="enemy-eye" cx="24" cy="36" r="5.5"/><circle class="enemy-eye" cx="40" cy="36" r="5.5"/>
+        <circle class="enemy-pupil" cx="25" cy="37" r="2.2"/><circle class="enemy-pupil" cx="41" cy="37" r="2.2"/>
+        <path class="enemy-horn" d="M18 16l-8-12 14 5z"/><path class="enemy-horn" d="M46 16l8-12-14 5z"/>
+        <path class="enemy-mouth" d="M24 46h16l-3 4H27z"/>
+        <path class="enemy-phase-extra enemy-spike" d="M32 6l4 9h-8z"/>
+        <path class="enemy-phase-extra enemy-claw" d="M14 48l-7 6 10-2z"/><path class="enemy-phase-extra enemy-claw" d="M50 48l7 6-10-2z"/>
+        <circle class="enemy-phase-extra enemy-aura" cx="32" cy="36" r="22"/>
+      `,
+    },
+    {
+      name: "Void Tutor",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="14" ry="3"/>
+        <circle class="enemy-body" cx="32" cy="32" r="16"/>
+        <path class="enemy-accent" d="M32 12l3 8h-6z"/><path class="enemy-accent" d="M16 32l8 3v-6z"/><path class="enemy-accent" d="M48 32l-8 3v-6z"/>
+        <circle class="enemy-eye" cx="26" cy="30" r="4.5"/><circle class="enemy-eye" cx="38" cy="30" r="4.5"/>
+        <circle class="enemy-pupil" cx="26" cy="30" r="1.8"/><circle class="enemy-pupil" cx="38" cy="30" r="1.8"/>
+        <path class="enemy-mouth" d="M27 40h10l-2 3h-6z"/>
+        <circle class="enemy-phase-extra enemy-aura" cx="32" cy="32" r="21"/>
+        <path class="enemy-phase-extra enemy-horn" d="M20 14l-8-8 12 3z"/><path class="enemy-phase-extra enemy-horn" d="M44 14l8-8-12 3z"/>
+      `,
+    },
+    {
+      name: "Final Boss",
+      svg: `
+        <ellipse class="enemy-shadow" cx="32" cy="56" rx="18" ry="4"/>
+        <path class="enemy-body" d="M10 40c2-18 12-28 22-28s20 10 22 28c1 10-8 16-22 16S9 50 10 40z"/>
+        <path class="enemy-armor" d="M16 26h32l-3 10H19z"/>
+        <path class="enemy-horn" d="M16 14l-10-12 16 5z"/><path class="enemy-horn" d="M48 14l10-12-16 5z"/>
+        <path class="enemy-spike" d="M32 4l5 11h-10z"/>
+        <circle class="enemy-eye" cx="24" cy="34" r="6"/><circle class="enemy-eye" cx="40" cy="34" r="6"/>
+        <circle class="enemy-pupil" cx="25" cy="35" r="2.4"/><circle class="enemy-pupil" cx="41" cy="35" r="2.4"/>
+        <path class="enemy-mouth" d="M22 46h20l-4 5H26z"/>
+        <circle class="enemy-phase-extra enemy-aura" cx="32" cy="34" r="24"/>
+        <path class="enemy-phase-extra enemy-claw" d="M12 50l-8 7 12-2z"/><path class="enemy-phase-extra enemy-claw" d="M52 50l8 7-12-2z"/>
+        <path class="enemy-phase-extra enemy-spike" d="M26 8l2.5 6h-5z"/><path class="enemy-phase-extra enemy-spike" d="M38 8l2.5 6h-5z"/>
+      `,
+    },
   ];
 
-  function enemyNameForLevel(level) {
-    const tier = Math.min(10, Math.ceil(level / 10));
-    const base = ENEMY_TITLES[tier - 1];
-    if (level >= MAX_LEVEL) return "Final Boss";
-    if (tier === 10) return `${base} Lv.${level}`;
-    return `${base} Lv.${level}`;
+  function enemyFormIndex(level) {
+    return Math.min(ENEMY_FORMS.length, Math.max(1, Math.ceil(level / 10)));
   }
 
-  function enemyVisualTier(level) {
-    return Math.min(10, Math.max(1, Math.ceil(level / 10)));
+  /** 0 = base look, 1 = mid-form upgrade every 5 levels within a decade */
+  function enemyPhase(level) {
+    return (level - 1) % 10 >= 5 ? 1 : 0;
+  }
+
+  function enemyNameForLevel(level) {
+    if (level >= MAX_LEVEL) return "Final Boss";
+    const form = enemyFormIndex(level);
+    const base = ENEMY_FORMS[form - 1].name;
+    const phase = enemyPhase(level);
+    if (phase === 1) return `${base}+`;
+    return base;
   }
 
   const els = {
@@ -48,6 +185,7 @@
     xpBarWrap: document.getElementById("xp-bar-wrap"),
     xpHint: document.getElementById("xp-hint"),
     enemy: document.getElementById("enemy"),
+    enemySvg: document.getElementById("enemy-svg"),
     enemyName: document.getElementById("enemy-name"),
     enemyPower: document.getElementById("enemy-power"),
     enemyAtkFill: document.getElementById("enemy-atk-fill"),
@@ -231,15 +369,17 @@
   }
 
   function enemyStats(level) {
-    const tier = Math.min(MAX_LEVEL, Math.max(1, level));
-    const visual = enemyVisualTier(tier);
+    const lvl = Math.min(MAX_LEVEL, Math.max(1, level));
+    const form = enemyFormIndex(lvl);
+    const phase = enemyPhase(lvl);
     return {
-      name: enemyNameForLevel(tier),
-      power: 10 + tier * 3,
-      atk: 8 + tier * 2,
-      hp: 20 + tier * 4,
-      scale: 0.9 + visual * 0.05,
-      visual,
+      name: enemyNameForLevel(lvl),
+      power: 10 + lvl * 3 + phase * 8 + (form - 1) * 5,
+      atk: 8 + lvl * 2 + phase * 6,
+      hp: 20 + lvl * 4 + phase * 10,
+      scale: 0.88 + form * 0.055 + phase * 0.06,
+      form,
+      phase,
     };
   }
 
@@ -321,16 +461,22 @@
     }
   }
 
+  let lastEnemyKey = "";
+
   function renderEnemy() {
     const stats = enemyStats(state.level);
-    const maxAtk = 8 + MAX_LEVEL * 2;
-    const maxHp = 20 + MAX_LEVEL * 4;
+    const maxAtk = 8 + MAX_LEVEL * 2 + 6;
+    const maxHp = 20 + MAX_LEVEL * 4 + 10;
     const atkPct = Math.round((stats.atk / maxAtk) * 100);
     const hpPct = Math.round((stats.hp / maxHp) * 100);
+    const enemyKey = `${stats.form}-${stats.phase}`;
+    const changed = lastEnemyKey && lastEnemyKey !== enemyKey;
 
-    els.enemy.dataset.tier = String(stats.visual);
+    els.enemy.dataset.form = String(stats.form);
+    els.enemy.dataset.phase = String(stats.phase);
     els.enemy.classList.toggle("maxed", state.level >= MAX_LEVEL);
     els.enemy.style.setProperty("--enemy-scale", String(stats.scale));
+    els.enemySvg.innerHTML = ENEMY_FORMS[stats.form - 1].svg;
     els.enemy.setAttribute(
       "aria-label",
       `${stats.name}, power ${stats.power}, attack ${stats.atk}, hp ${stats.hp}`
@@ -339,6 +485,18 @@
     els.enemyPower.textContent = `PWR ${stats.power}`;
     els.enemyAtkFill.style.width = `${atkPct}%`;
     els.enemyHpFill.style.width = `${hpPct}%`;
+
+    if (changed) {
+      els.enemy.classList.remove("evolve-flash");
+      // retrigger animation
+      void els.enemy.offsetWidth;
+      els.enemy.classList.add("evolve-flash");
+      window.clearTimeout(renderEnemy._flashTimer);
+      renderEnemy._flashTimer = window.setTimeout(() => {
+        els.enemy.classList.remove("evolve-flash");
+      }, 560);
+    }
+    lastEnemyKey = enemyKey;
   }
 
   function renderXp() {
