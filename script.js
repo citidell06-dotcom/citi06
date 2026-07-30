@@ -59,6 +59,101 @@
   let timerId = null;
   let running = false;
   let toastTimer = null;
+  let audioCtx = null;
+
+  function getAudioCtx() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!audioCtx) audioCtx = new AC();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function tone(ctx, { freq, type = "sine", start, dur, gain = 0.08, attack = 0.01, release = 0.08 }) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, start);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(gain, start + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + Math.max(attack + 0.01, dur - release));
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + dur + 0.02);
+  }
+
+  /** Soft UI “item added” pop */
+  function playAddSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    tone(ctx, { freq: 520, type: "triangle", start: t, dur: 0.09, gain: 0.07, attack: 0.005, release: 0.06 });
+    tone(ctx, { freq: 780, type: "sine", start: t + 0.04, dur: 0.1, gain: 0.05, attack: 0.005, release: 0.07 });
+  }
+
+  /** Satisfying quest-complete chime */
+  function playCompleteSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99];
+    notes.forEach((freq, i) => {
+      tone(ctx, {
+        freq,
+        type: "triangle",
+        start: t + i * 0.07,
+        dur: 0.22,
+        gain: 0.07 - i * 0.01,
+        attack: 0.01,
+        release: 0.12,
+      });
+    });
+  }
+
+  /** Minecraft-style XP / level-up sparkle when the bar fills */
+  function playMinecraftXpSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+
+    // Short orb-like sparkles (classic XP pickup vibe)
+    const orbPitches = [1200, 1400, 1600, 1800, 2000];
+    orbPitches.forEach((freq, i) => {
+      tone(ctx, {
+        freq,
+        type: "sine",
+        start: t + i * 0.045,
+        dur: 0.12,
+        gain: 0.045,
+        attack: 0.005,
+        release: 0.08,
+      });
+    });
+
+    // Ascending level-up flourish
+    const levelNotes = [523.25, 659.25, 783.99, 1046.5];
+    levelNotes.forEach((freq, i) => {
+      tone(ctx, {
+        freq,
+        type: "square",
+        start: t + 0.18 + i * 0.09,
+        dur: 0.28,
+        gain: 0.035,
+        attack: 0.01,
+        release: 0.14,
+      });
+      tone(ctx, {
+        freq: freq * 2,
+        type: "sine",
+        start: t + 0.18 + i * 0.09,
+        dur: 0.28,
+        gain: 0.02,
+        attack: 0.01,
+        release: 0.14,
+      });
+    });
+  }
 
   function xpForLevel(level) {
     return BASE_XP + (level - 1) * 50;
@@ -137,14 +232,16 @@
     saveState();
 
     if (leveled) {
+      playMinecraftXpSound();
       const foe = enemyStats(state.level).name;
       if (state.level >= MAX_LEVEL) {
         showToast(`LVL ${MAX_LEVEL}! Final Boss awakened`);
       } else {
-        showToast(`Level up! ${foe} grew stronger`);
-      }
-      if (levelsGained > 1) {
-        // keep toast concise; already announced strongest foe
+        showToast(
+          levelsGained > 1
+            ? `Leveled ×${levelsGained}! ${foe} grew stronger`
+            : `Level up! ${foe} grew stronger`
+        );
       }
     } else {
       showToast(`+${amount} XP · ${reason}`);
@@ -241,6 +338,7 @@
       text,
       done: false,
     });
+    playAddSound();
     renderQuests();
     saveState();
   }
@@ -251,8 +349,10 @@
 
     if (!quest.done) {
       quest.done = true;
+      playCompleteSound();
       renderQuests();
-      addXp(XP_PER_QUEST, "Quest cleared");
+      // Slight delay so completion and XP level-up don't fully overlap
+      setTimeout(() => addXp(XP_PER_QUEST, "Quest cleared"), 180);
     } else {
       quest.done = false;
       renderQuests();
