@@ -25,7 +25,7 @@
     <section class="panel xp-panel" aria-labelledby="xp-heading">
       <div class="panel-head">
         <h2 id="xp-heading">Level &amp; XP</h2>
-        <span class="panel-chip" id="level-badge">LVL 1 / 10</span>
+        <span class="panel-chip" id="level-badge">LVL 1 / 100</span>
       </div>
 
       <div class="xp-row">
@@ -92,15 +92,15 @@
         />
         <fieldset class="difficulty-picker">
           <legend class="sr-only">Quest difficulty</legend>
-          <label class="diff-option">
+          <label class="diff-option" data-diff="easy">
             <input type="radio" name="difficulty" value="easy" checked />
             <span>Easy</span>
           </label>
-          <label class="diff-option">
+          <label class="diff-option" data-diff="medium">
             <input type="radio" name="difficulty" value="medium" />
             <span>Medium</span>
           </label>
-          <label class="diff-option">
+          <label class="diff-option" data-diff="hard">
             <input type="radio" name="difficulty" value="hard" />
             <span>Hard</span>
           </label>

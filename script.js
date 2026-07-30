@@ -2,7 +2,7 @@
   const STORAGE_KEY = "study-with-games-v1";
   const XP_PER_FOCUS = 25;
   const BASE_XP = 100;
-  const MAX_LEVEL = 10;
+  const MAX_LEVEL = 100;
 
   const DIFFICULTY = {
     easy: { xp: 15, label: "Easy" },
@@ -10,7 +10,7 @@
     hard: { xp: 45, label: "Hard" },
   };
 
-  const ENEMY_NAMES = [
+  const ENEMY_TITLES = [
     "Sloth Imp",
     "Distraction Sprite",
     "Scroll Wraith",
@@ -22,6 +22,18 @@
     "Void Tutor",
     "Final Boss",
   ];
+
+  function enemyNameForLevel(level) {
+    const tier = Math.min(10, Math.ceil(level / 10));
+    const base = ENEMY_TITLES[tier - 1];
+    if (level >= MAX_LEVEL) return "Final Boss";
+    if (tier === 10) return `${base} Lv.${level}`;
+    return `${base} Lv.${level}`;
+  }
+
+  function enemyVisualTier(level) {
+    return Math.min(10, Math.max(1, Math.ceil(level / 10)));
+  }
 
   const els = {
     questForm: document.getElementById("quest-form"),
@@ -220,12 +232,14 @@
 
   function enemyStats(level) {
     const tier = Math.min(MAX_LEVEL, Math.max(1, level));
+    const visual = enemyVisualTier(tier);
     return {
-      name: ENEMY_NAMES[tier - 1],
-      power: 10 + tier * 8,
-      atk: 8 + tier * 9,
-      hp: 20 + tier * 14,
-      scale: 0.92 + tier * 0.045,
+      name: enemyNameForLevel(tier),
+      power: 10 + tier * 3,
+      atk: 8 + tier * 2,
+      hp: 20 + tier * 4,
+      scale: 0.9 + visual * 0.05,
+      visual,
     };
   }
 
@@ -309,12 +323,12 @@
 
   function renderEnemy() {
     const stats = enemyStats(state.level);
-    const maxAtk = 8 + MAX_LEVEL * 9;
-    const maxHp = 20 + MAX_LEVEL * 14;
+    const maxAtk = 8 + MAX_LEVEL * 2;
+    const maxHp = 20 + MAX_LEVEL * 4;
     const atkPct = Math.round((stats.atk / maxAtk) * 100);
     const hpPct = Math.round((stats.hp / maxHp) * 100);
 
-    els.enemy.dataset.tier = String(state.level);
+    els.enemy.dataset.tier = String(stats.visual);
     els.enemy.classList.toggle("maxed", state.level >= MAX_LEVEL);
     els.enemy.style.setProperty("--enemy-scale", String(stats.scale));
     els.enemy.setAttribute(
