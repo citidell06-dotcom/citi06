@@ -11,10 +11,10 @@
   };
 
   const RARITY_COST = {
-    common: 0,
-    rare: 0,
-    epic: 0,
-    legendary: 0,
+    common: 2,
+    rare: 3,
+    epic: 6,
+    legendary: 9,
   };
 
   const THEMES = [
@@ -360,8 +360,12 @@
       loaded?.tokens != null
         ? Math.max(0, loaded.tokens)
         : Math.max(0, startLevel - 1),
-    ownedThemes: THEMES.map((t) => t.id),
-    ownedGames: GAMES.map((g) => g.id),
+    ownedThemes: Array.isArray(loaded?.ownedThemes)
+      ? loaded.ownedThemes.filter((id) => THEME_IDS.has(id))
+      : [],
+    ownedGames: Array.isArray(loaded?.ownedGames)
+      ? loaded.ownedGames.filter((id) => GAME_IDS.has(id))
+      : [],
     activeTheme: THEME_IDS.has(loaded?.activeTheme) ? loaded.activeTheme : null,
     studySeconds: Math.max(0, loaded?.studySeconds ?? 0),
     questsCompleted: Math.max(0, loaded?.questsCompleted ?? 0),
@@ -1057,20 +1061,23 @@
 
   function buyTheme(id) {
     const item = THEMES.find((t) => t.id === id);
-    if (!item) return;
-    if (!state.ownedThemes.includes(id)) state.ownedThemes.push(id);
+    if (!item || state.ownedThemes.includes(id)) return;
+    if (state.tokens < item.cost) {
+      showToast("Not enough tokens");
+      return;
+    }
+    state.tokens -= item.cost;
+    state.ownedThemes.push(id);
     state.activeTheme = id;
     applyTheme(id);
+    renderTokens();
     renderShop();
     saveState();
-    showToast(`Theme: ${item.name}`);
+    showToast(`Unlocked ${item.name}`);
   }
 
   function equipTheme(id) {
-    if (!state.ownedThemes.includes(id)) {
-      buyTheme(id);
-      return;
-    }
+    if (!state.ownedThemes.includes(id)) return;
     if (state.activeTheme === id) {
       state.activeTheme = null;
       applyTheme(null);
@@ -1086,11 +1093,18 @@
 
   function buyGame(id) {
     const item = GAMES.find((g) => g.id === id);
-    if (!item) return;
-    if (!state.ownedGames.includes(id)) state.ownedGames.push(id);
+    if (!item || state.ownedGames.includes(id)) return false;
+    if (state.tokens < item.cost) {
+      showToast("Not enough tokens");
+      return false;
+    }
+    state.tokens -= item.cost;
+    state.ownedGames.push(id);
+    renderTokens();
     renderShop();
     saveState();
-    showToast(`${item.name} ready`);
+    showToast(`Unlocked ${item.name}`);
+    return true;
   }
 
   function shopCardHtml(item, type) {
@@ -1099,18 +1113,22 @@
         ? state.ownedThemes.includes(item.id)
         : state.ownedGames.includes(item.id);
     const active = type === "theme" && state.activeTheme === item.id;
-    let actionLabel = "Free";
+    const canAfford = state.tokens >= item.cost;
+    let actionLabel = `${item.cost} ◈`;
     let actionAttr = `data-buy-${type}="${item.id}"`;
     let btnClass = "btn-primary";
+    let disabled = "";
 
     if (owned && type === "theme") {
       actionLabel = active ? "Equipped" : "Equip";
       actionAttr = `data-equip-theme="${item.id}"`;
       btnClass = "btn-ghost";
-    } else if (type === "game") {
+    } else if (owned && type === "game") {
       actionLabel = "Play";
       actionAttr = `data-play-game="${item.id}"`;
       btnClass = "btn-primary";
+    } else if (!canAfford) {
+      disabled = "disabled";
     }
 
     const swatch =
@@ -1124,7 +1142,7 @@
         </div>
         ${swatch}
         <p class="shop-card-desc">${item.desc}</p>
-        <button type="button" class="btn ${btnClass}" ${actionAttr}>${actionLabel}</button>
+        <button type="button" class="btn ${btnClass}" ${actionAttr} ${disabled}>${actionLabel}</button>
       </article>
     `;
   }
@@ -1145,9 +1163,6 @@
     const play = e.target.closest("[data-play-game]");
     const buy = e.target.closest("[data-buy-game]");
     if (play) {
-      if (!state.ownedGames.includes(play.dataset.playGame)) {
-        buyGame(play.dataset.playGame);
-      }
       startMiniGame(play.dataset.playGame);
     } else if (buy) {
       buyGame(buy.dataset.buyGame);
@@ -1174,7 +1189,7 @@
     const owned = GAMES.filter((g) => state.ownedGames.includes(g.id));
     if (!owned.length) {
       els.rewardCopy.textContent =
-        "Rest up from your quests. Pick a game below when you’re ready.";
+        "Rest up from your quests. Buy games in the shop to play during breaks.";
       els.rewardGames.innerHTML = "";
     } else {
       els.rewardCopy.textContent =
