@@ -10,6 +10,68 @@
     hard: { xp: 45, label: "Hard" },
   };
 
+  const THEMES = [
+    {
+      id: "sunset",
+      name: "Sunset",
+      rarity: "common",
+      cost: 3,
+      desc: "Warm dusk glow over the study zone.",
+    },
+    {
+      id: "blackhole",
+      name: "Black Hole",
+      rarity: "epic",
+      cost: 15,
+      desc: "Deep space swirl with star sparkles.",
+    },
+    {
+      id: "mario",
+      name: "Mario World",
+      rarity: "legendary",
+      cost: 20,
+      desc: "Blue skies, hills, and pipe-era vibes.",
+    },
+  ];
+
+  const GAMES = [
+    {
+      id: "arkanoid",
+      name: "Arkanoid",
+      rarity: "rare",
+      cost: 10,
+      desc: "Break bricks with the paddle.",
+      help: "← → or A/D move · click/tap also works",
+    },
+    {
+      id: "galaga",
+      name: "Galaga",
+      rarity: "epic",
+      cost: 20,
+      desc: "Blast waves of invaders.",
+      help: "← → move · Space / tap to shoot",
+    },
+    {
+      id: "tetris",
+      name: "Tetris",
+      rarity: "legendary",
+      cost: 30,
+      desc: "Classic stack-and-clear blocks.",
+      help: "← → move · ↑ rotate · ↓ soft drop · Space hard drop",
+    },
+    {
+      id: "mario2d",
+      name: "Mario 2D",
+      rarity: "legendary",
+      cost: 30,
+      desc: "Old-school run and jump side-scroller.",
+      help: "← → move · ↑ / Space / tap to jump",
+    },
+  ];
+
+  const THEME_IDS = new Set(THEMES.map((t) => t.id));
+  const GAME_IDS = new Set(GAMES.map((g) => g.id));
+
   const ENEMY_FORMS = [
     {
       name: "Sloth Imp",
@@ -199,13 +261,41 @@
     timerReset: document.getElementById("timer-reset"),
     modeButtons: [...document.querySelectorAll(".mode-btn")],
     toast: document.getElementById("toast"),
+    tokenCount: document.getElementById("token-count"),
+    themeShop: document.getElementById("theme-shop"),
+    gameShop: document.getElementById("game-shop"),
+    rewardModal: document.getElementById("reward-modal"),
+    rewardGames: document.getElementById("reward-games"),
+    rewardClose: document.getElementById("reward-close"),
+    rewardSkip: document.getElementById("reward-skip"),
+    rewardCopy: document.getElementById("reward-copy"),
+    gameModal: document.getElementById("game-modal"),
+    gameTitle: document.getElementById("game-title"),
+    gameScore: document.getElementById("game-score"),
+    gameHelp: document.getElementById("game-help"),
+    gameCanvas: document.getElementById("game-canvas"),
+    gameClose: document.getElementById("game-close"),
+    gameRestart: document.getElementById("game-restart"),
+    gameQuit: document.getElementById("game-quit"),
   };
 
   const loaded = loadState();
+  const startLevel = Math.min(MAX_LEVEL, Math.max(1, loaded?.level ?? 1));
   const state = {
     xp: loaded?.xp ?? 0,
-    level: Math.min(MAX_LEVEL, Math.max(1, loaded?.level ?? 1)),
+    level: startLevel,
     quests: normalizeQuests(loaded?.quests),
+    tokens:
+      loaded?.tokens != null
+        ? Math.max(0, loaded.tokens)
+        : Math.max(0, startLevel - 1),
+    ownedThemes: Array.isArray(loaded?.ownedThemes)
+      ? loaded.ownedThemes.filter((id) => THEME_IDS.has(id))
+      : [],
+    ownedGames: Array.isArray(loaded?.ownedGames)
+      ? loaded.ownedGames.filter((id) => GAME_IDS.has(id))
+      : [],
+    activeTheme: THEME_IDS.has(loaded?.activeTheme) ? loaded.activeTheme : null,
   };
 
   function normalizeQuests(quests) {
@@ -399,6 +489,10 @@
         xp: state.xp,
         level: state.level,
         quests: state.quests,
+        tokens: state.tokens,
+        ownedThemes: state.ownedThemes,
+        ownedGames: state.ownedGames,
+        activeTheme: state.activeTheme,
       })
     );
   }
@@ -441,19 +535,30 @@
       state.xp = Math.min(state.xp, xpForLevel(MAX_LEVEL));
     }
 
+    if (levelsGained > 0) {
+      state.tokens += levelsGained;
+    }
+
     renderXp();
+    renderTokens();
+    renderShop();
     saveState();
 
     if (leveled) {
       playMinecraftXpSound();
-      const foe = enemyStats(state.level).name;
+      const foe = enemyStats(state.level);
+      const tokenNote = levelsGained === 1 ? "+1 token" : `+${levelsGained} tokens`;
       if (state.level >= MAX_LEVEL) {
-        showToast(`LVL ${MAX_LEVEL}! Final Boss awakened`);
+        showToast(`LVL ${MAX_LEVEL}! Final Boss · ${tokenNote}`);
+      } else if (state.level % 10 === 1 && state.level > 1) {
+        showToast(`New foe! ${foe.name} · ${tokenNote}`);
+      } else if (enemyPhase(state.level) === 1 && (state.level - 1) % 10 === 5) {
+        showToast(`${foe.name} evolved! · ${tokenNote}`);
       } else {
         showToast(
           levelsGained > 1
-            ? `Leveled ×${levelsGained}! ${foe} grew stronger`
-            : `Level up! ${foe} grew stronger`
+            ? `Leveled ×${levelsGained}! ${tokenNote}`
+            : `Level up! ${tokenNote}`
         );
       }
     } else {
@@ -647,6 +752,7 @@
       } else {
         showToast("Break over — back to it!");
       }
+      openRewardModal();
       return;
     }
 
@@ -709,9 +815,817 @@
     });
   });
 
+  function renderTokens() {
+    els.tokenCount.textContent = String(state.tokens);
+  }
+
+  function applyTheme(themeId) {
+    document.body.classList.remove("theme-sunset", "theme-blackhole", "theme-mario");
+    if (themeId && THEME_IDS.has(themeId)) {
+      document.body.classList.add(`theme-${themeId}`);
+    }
+  }
+
+  function buyTheme(id) {
+    const item = THEMES.find((t) => t.id === id);
+    if (!item || state.ownedThemes.includes(id)) return;
+    if (state.tokens < item.cost) {
+      showToast("Not enough tokens");
+      return;
+    }
+    state.tokens -= item.cost;
+    state.ownedThemes.push(id);
+    state.activeTheme = id;
+    applyTheme(id);
+    renderTokens();
+    renderShop();
+    saveState();
+    showToast(`Unlocked ${item.name}`);
+  }
+
+  function equipTheme(id) {
+    if (!state.ownedThemes.includes(id)) return;
+    if (state.activeTheme === id) {
+      state.activeTheme = null;
+      applyTheme(null);
+      showToast("Default theme");
+    } else {
+      state.activeTheme = id;
+      applyTheme(id);
+      showToast(`Theme: ${THEMES.find((t) => t.id === id).name}`);
+    }
+    renderShop();
+    saveState();
+  }
+
+  function buyGame(id) {
+    const item = GAMES.find((g) => g.id === id);
+    if (!item || state.ownedGames.includes(id)) return;
+    if (state.tokens < item.cost) {
+      showToast("Not enough tokens");
+      return;
+    }
+    state.tokens -= item.cost;
+    state.ownedGames.push(id);
+    renderTokens();
+    renderShop();
+    saveState();
+    showToast(`Unlocked ${item.name}`);
+  }
+
+  function shopCardHtml(item, type) {
+    const owned =
+      type === "theme"
+        ? state.ownedThemes.includes(item.id)
+        : state.ownedGames.includes(item.id);
+    const active = type === "theme" && state.activeTheme === item.id;
+    const canAfford = state.tokens >= item.cost;
+    let actionLabel = `${item.cost} ◈`;
+    let actionAttr = `data-buy-${type}="${item.id}"`;
+    let disabled = "";
+
+    if (owned && type === "theme") {
+      actionLabel = active ? "Equipped" : "Equip";
+      actionAttr = `data-equip-theme="${item.id}"`;
+    } else if (owned && type === "game") {
+      actionLabel = "Owned";
+      actionAttr = "";
+      disabled = "disabled";
+    } else if (!canAfford) {
+      disabled = "disabled";
+    }
+
+    const swatch =
+      type === "theme" ? `<div class="preview-swatch ${item.id}" aria-hidden="true"></div>` : "";
+
+    return `
+      <article class="shop-card${owned ? " owned" : ""}${active ? " active-theme" : ""}">
+        <div class="shop-card-top">
+          <p class="shop-card-name">${item.name}</p>
+          <span class="rarity ${item.rarity}">${item.rarity}</span>
+        </div>
+        ${swatch}
+        <p class="shop-card-desc">${item.desc}</p>
+        <button type="button" class="btn ${owned ? "btn-ghost" : "btn-primary"}" ${actionAttr} ${disabled}>${actionLabel}</button>
+      </article>
+    `;
+  }
+
+  function renderShop() {
+    els.themeShop.innerHTML = THEMES.map((t) => shopCardHtml(t, "theme")).join("");
+    els.gameShop.innerHTML = GAMES.map((g) => shopCardHtml(g, "game")).join("");
+  }
+
+  els.themeShop.addEventListener("click", (e) => {
+    const buy = e.target.closest("[data-buy-theme]");
+    const equip = e.target.closest("[data-equip-theme]");
+    if (buy) buyTheme(buy.dataset.buyTheme);
+    if (equip) equipTheme(equip.dataset.equipTheme);
+  });
+
+  els.gameShop.addEventListener("click", (e) => {
+    const buy = e.target.closest("[data-buy-game]");
+    if (buy) buyGame(buy.dataset.buyGame);
+  });
+
+  function openRewardModal() {
+    const owned = GAMES.filter((g) => state.ownedGames.includes(g.id));
+    if (!owned.length) {
+      els.rewardCopy.textContent =
+        "Buy games in the Token Shop to play them when a timer finishes.";
+      els.rewardGames.innerHTML = "";
+    } else {
+      els.rewardCopy.textContent = "Pick a game you own as a reward break.";
+      els.rewardGames.innerHTML = owned
+        .map(
+          (g) =>
+            `<button type="button" class="btn btn-primary" data-play-game="${g.id}">Play ${g.name}</button>`
+        )
+        .join("");
+    }
+    els.rewardModal.hidden = false;
+  }
+
+  function closeRewardModal() {
+    els.rewardModal.hidden = true;
+  }
+
+  els.rewardClose.addEventListener("click", closeRewardModal);
+  els.rewardSkip.addEventListener("click", closeRewardModal);
+  els.rewardGames.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-play-game]");
+    if (!btn) return;
+    closeRewardModal();
+    startMiniGame(btn.dataset.playGame);
+  });
+
+  /* ---------- Mini-games ---------- */
+  let activeGame = null;
+  let gameRaf = 0;
+  const gctx = els.gameCanvas.getContext("2d");
+  const keys = new Set();
+
+  function setScore(n) {
+    els.gameScore.textContent = `Score ${n}`;
+  }
+
+  function stopMiniGame() {
+    cancelAnimationFrame(gameRaf);
+    gameRaf = 0;
+    if (activeGame?.destroy) activeGame.destroy();
+    activeGame = null;
+  }
+
+  function closeGameModal() {
+    stopMiniGame();
+    els.gameModal.hidden = true;
+  }
+
+  function startMiniGame(id) {
+    const meta = GAMES.find((g) => g.id === id);
+    if (!meta || !state.ownedGames.includes(id)) return;
+    stopMiniGame();
+    els.gameTitle.textContent = meta.name;
+    els.gameHelp.textContent = meta.help;
+    setScore(0);
+    els.gameModal.hidden = false;
+
+    if (id === "tetris") activeGame = createTetris();
+    else if (id === "galaga") activeGame = createGalaga();
+    else if (id === "arkanoid") activeGame = createArkanoid();
+    else if (id === "mario2d") activeGame = createMario2d();
+
+    activeGame?.start();
+  }
+
+  els.gameClose.addEventListener("click", closeGameModal);
+  els.gameQuit.addEventListener("click", closeGameModal);
+  els.gameRestart.addEventListener("click", () => {
+    if (!activeGame) return;
+    const id = activeGame.id;
+    startMiniGame(id);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    keys.add(e.key);
+    if (!els.gameModal.hidden && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(e.key)) {
+      e.preventDefault();
+    }
+    activeGame?.onKey?.(e);
+  });
+  window.addEventListener("keyup", (e) => keys.delete(e.key));
+
+  els.gameCanvas.addEventListener("pointerdown", (e) => activeGame?.onPointer?.(e));
+  els.gameCanvas.addEventListener("pointermove", (e) => activeGame?.onPointerMove?.(e));
+
+  function createTetris() {
+    const COLS = 10;
+    const ROWS = 20;
+    const SIZE = 24;
+    const W = COLS * SIZE;
+    const H = ROWS * SIZE;
+    els.gameCanvas.width = W;
+    els.gameCanvas.height = H;
+
+    const SHAPES = {
+      I: [[1, 1, 1, 1]],
+      O: [[1, 1], [1, 1]],
+      T: [[0, 1, 0], [1, 1, 1]],
+      S: [[0, 1, 1], [1, 1, 0]],
+      Z: [[1, 1, 0], [0, 1, 1]],
+      J: [[1, 0, 0], [1, 1, 1]],
+      L: [[0, 0, 1], [1, 1, 1]],
+    };
+    const COLORS = {
+      I: "#00e5ff", O: "#ffd166", T: "#c084fc", S: "#39ffb6",
+      Z: "#ff5c7a", J: "#4da3ff", L: "#ff9f43",
+    };
+    const bagTypes = () => ["I", "O", "T", "S", "Z", "J", "L"].sort(() => Math.random() - 0.5);
+
+    let board, piece, score, dropAcc, dropMs, over, bag;
+
+    function rotate(m) {
+      const r = m[0].length;
+      const c = m.length;
+      const out = Array.from({ length: r }, () => Array(c).fill(0));
+      for (let y = 0; y < c; y++) for (let x = 0; x < r; x++) out[x][c - 1 - y] = m[y][x];
+      return out;
+    }
+
+    function spawn() {
+      if (!bag.length) bag = bagTypes();
+      const type = bag.pop();
+      piece = {
+        type,
+        matrix: SHAPES[type].map((row) => row.slice()),
+        x: 3,
+        y: 0,
+      };
+      if (collide(piece.x, piece.y, piece.matrix)) over = true;
+    }
+
+    function collide(x, y, matrix) {
+      for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[r].length; c++) {
+          if (!matrix[r][c]) continue;
+          const nx = x + c;
+          const ny = y + r;
+          if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+          if (ny >= 0 && board[ny][nx]) return true;
+        }
+      }
+      return false;
+    }
+
+    function merge() {
+      piece.matrix.forEach((row, r) => {
+        row.forEach((v, c) => {
+          if (!v) return;
+          const ny = piece.y + r;
+          const nx = piece.x + c;
+          if (ny >= 0) board[ny][nx] = piece.type;
+        });
+      });
+    }
+
+    function clearLines() {
+      let cleared = 0;
+      for (let y = ROWS - 1; y >= 0; y--) {
+        if (board[y].every(Boolean)) {
+          board.splice(y, 1);
+          board.unshift(Array(COLS).fill(null));
+          cleared += 1;
+          y += 1;
+        }
+      }
+      if (cleared) {
+        score += [0, 100, 300, 500, 800][cleared] || cleared * 200;
+        setScore(score);
+        dropMs = Math.max(120, 650 - score / 20);
+      }
+    }
+
+    function hardDrop() {
+      while (!collide(piece.x, piece.y + 1, piece.matrix)) piece.y += 1;
+      lock();
+    }
+
+    function lock() {
+      merge();
+      clearLines();
+      spawn();
+    }
+
+    function draw() {
+      gctx.fillStyle = "#050b14";
+      gctx.fillRect(0, 0, W, H);
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          if (!board[y][x]) continue;
+          gctx.fillStyle = COLORS[board[y][x]];
+          gctx.fillRect(x * SIZE + 1, y * SIZE + 1, SIZE - 2, SIZE - 2);
+        }
+      }
+      piece.matrix.forEach((row, r) => {
+        row.forEach((v, c) => {
+          if (!v) return;
+          gctx.fillStyle = COLORS[piece.type];
+          gctx.fillRect((piece.x + c) * SIZE + 1, (piece.y + r) * SIZE + 1, SIZE - 2, SIZE - 2);
+        });
+      });
+      if (over) {
+        gctx.fillStyle = "rgba(0,0,0,0.55)";
+        gctx.fillRect(0, 0, W, H);
+        gctx.fillStyle = "#fff";
+        gctx.font = "20px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText("GAME OVER", W / 2, H / 2);
+      }
+    }
+
+    let last = 0;
+    function loop(ts) {
+      gameRaf = requestAnimationFrame(loop);
+      if (over) {
+        draw();
+        return;
+      }
+      const dt = ts - last;
+      last = ts;
+      dropAcc += dt;
+      if (dropAcc >= dropMs) {
+        dropAcc = 0;
+        if (!collide(piece.x, piece.y + 1, piece.matrix)) piece.y += 1;
+        else lock();
+      }
+      draw();
+    }
+
+    return {
+      id: "tetris",
+      start() {
+        board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+        score = 0;
+        dropAcc = 0;
+        dropMs = 650;
+        over = false;
+        bag = bagTypes();
+        setScore(0);
+        spawn();
+        last = performance.now();
+        gameRaf = requestAnimationFrame(loop);
+      },
+      onKey(e) {
+        if (over) return;
+        if (e.key === "ArrowLeft" && !collide(piece.x - 1, piece.y, piece.matrix)) piece.x -= 1;
+        if (e.key === "ArrowRight" && !collide(piece.x + 1, piece.y, piece.matrix)) piece.x += 1;
+        if (e.key === "ArrowDown" && !collide(piece.x, piece.y + 1, piece.matrix)) {
+          piece.y += 1;
+          score += 1;
+          setScore(score);
+        }
+        if (e.key === "ArrowUp") {
+          const next = rotate(piece.matrix);
+          if (!collide(piece.x, piece.y, next)) piece.matrix = next;
+        }
+        if (e.key === " ") hardDrop();
+      },
+      destroy() {},
+    };
+  }
+
+  function createGalaga() {
+    const W = 360;
+    const H = 480;
+    els.gameCanvas.width = W;
+    els.gameCanvas.height = H;
+    let player, bullets, enemies, score, over, spawnTimer, last;
+
+    function reset() {
+      player = { x: W / 2, y: H - 40, w: 28, h: 16 };
+      bullets = [];
+      enemies = [];
+      score = 0;
+      over = false;
+      spawnTimer = 0;
+      setScore(0);
+      last = performance.now();
+    }
+
+    function shoot() {
+      if (bullets.length > 4) return;
+      bullets.push({ x: player.x, y: player.y - 10, vy: -8 });
+    }
+
+    function draw() {
+      gctx.fillStyle = "#050814";
+      gctx.fillRect(0, 0, W, H);
+      gctx.fillStyle = "#39ffb6";
+      gctx.fillRect(player.x - player.w / 2, player.y, player.w, player.h);
+      gctx.fillStyle = "#00e5ff";
+      bullets.forEach((b) => gctx.fillRect(b.x - 2, b.y, 4, 10));
+      enemies.forEach((en) => {
+        gctx.fillStyle = en.elite ? "#ff5c7a" : "#c084fc";
+        gctx.beginPath();
+        gctx.moveTo(en.x, en.y - 10);
+        gctx.lineTo(en.x + 12, en.y + 8);
+        gctx.lineTo(en.x - 12, en.y + 8);
+        gctx.closePath();
+        gctx.fill();
+      });
+      if (over) {
+        gctx.fillStyle = "rgba(0,0,0,0.55)";
+        gctx.fillRect(0, 0, W, H);
+        gctx.fillStyle = "#fff";
+        gctx.font = "20px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText("GAME OVER", W / 2, H / 2);
+      }
+    }
+
+    function loop(ts) {
+      gameRaf = requestAnimationFrame(loop);
+      const dt = Math.min(32, ts - last);
+      last = ts;
+      if (over) {
+        draw();
+        return;
+      }
+
+      if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) player.x -= 0.35 * dt;
+      if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) player.x += 0.35 * dt;
+      player.x = Math.max(20, Math.min(W - 20, player.x));
+
+      spawnTimer += dt;
+      if (spawnTimer > 700) {
+        spawnTimer = 0;
+        enemies.push({
+          x: 30 + Math.random() * (W - 60),
+          y: -20,
+          vy: 0.08 + Math.random() * 0.08 + score * 0.0002,
+          elite: Math.random() < 0.2,
+        });
+      }
+
+      bullets.forEach((b) => {
+        b.y += b.vy;
+      });
+      bullets = bullets.filter((b) => b.y > -20);
+
+      enemies.forEach((en) => {
+        en.y += en.vy * dt;
+      });
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const en = enemies[i];
+        if (en.y > H + 20) {
+          enemies.splice(i, 1);
+          continue;
+        }
+        if (Math.abs(en.x - player.x) < 18 && Math.abs(en.y - player.y) < 16) {
+          over = true;
+        }
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const b = bullets[j];
+          if (Math.abs(b.x - en.x) < 14 && Math.abs(b.y - en.y) < 12) {
+            bullets.splice(j, 1);
+            enemies.splice(i, 1);
+            score += en.elite ? 50 : 20;
+            setScore(score);
+            break;
+          }
+        }
+      }
+      draw();
+    }
+
+    return {
+      id: "galaga",
+      start() {
+        reset();
+        gameRaf = requestAnimationFrame(loop);
+      },
+      onKey(e) {
+        if (e.key === " " || e.key === "Spacebar") shoot();
+      },
+      onPointer(e) {
+        const rect = els.gameCanvas.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * W;
+        player.x = x;
+        shoot();
+      },
+      onPointerMove(e) {
+        if (e.buttons !== 1) return;
+        const rect = els.gameCanvas.getBoundingClientRect();
+        player.x = ((e.clientX - rect.left) / rect.width) * W;
+      },
+      destroy() {},
+    };
+  }
+
+  function createMario2d() {
+    const W = 360;
+    const H = 480;
+    els.gameCanvas.width = W;
+    els.gameCanvas.height = H;
+    const GROUND = H - 60;
+    let player, hazards, coins, scroll, score, over, last, jumpBuf;
+
+    function reset() {
+      player = { x: 80, y: GROUND - 28, vx: 0, vy: 0, w: 22, h: 28, onGround: true };
+      hazards = [];
+      coins = [];
+      scroll = 0;
+      score = 0;
+      over = false;
+      jumpBuf = 0;
+      setScore(0);
+      last = performance.now();
+      for (let i = 0; i < 8; i++) spawnAhead(400 + i * 160);
+    }
+
+    function spawnAhead(x) {
+      if (Math.random() < 0.55) {
+        hazards.push({ x, y: GROUND - 18, w: 22, h: 18 });
+      } else {
+        coins.push({ x, y: GROUND - 70 - Math.random() * 40, r: 8, taken: false });
+      }
+    }
+
+    function jump() {
+      if (player.onGround || jumpBuf > 0) {
+        player.vy = -9.2;
+        player.onGround = false;
+        jumpBuf = 0;
+      }
+    }
+
+    function draw() {
+      // sky
+      gctx.fillStyle = "#5c94fc";
+      gctx.fillRect(0, 0, W, H);
+      // hills
+      gctx.fillStyle = "#5cbf2a";
+      gctx.beginPath();
+      gctx.ellipse(60 - (scroll * 0.2) % 200, GROUND, 90, 40, 0, 0, Math.PI * 2);
+      gctx.ellipse(220 - (scroll * 0.2) % 200, GROUND, 110, 50, 0, 0, Math.PI * 2);
+      gctx.ellipse(340 - (scroll * 0.2) % 200, GROUND, 80, 35, 0, 0, Math.PI * 2);
+      gctx.fill();
+      // ground
+      gctx.fillStyle = "#c84c0c";
+      gctx.fillRect(0, GROUND, W, H - GROUND);
+      gctx.fillStyle = "#8b3a12";
+      gctx.fillRect(0, GROUND + 18, W, H - GROUND);
+
+      coins.forEach((c) => {
+        if (c.taken) return;
+        const sx = c.x - scroll;
+        gctx.fillStyle = "#ffd166";
+        gctx.beginPath();
+        gctx.arc(sx, c.y, c.r, 0, Math.PI * 2);
+        gctx.fill();
+      });
+
+      hazards.forEach((h) => {
+        const sx = h.x - scroll;
+        gctx.fillStyle = "#e52521";
+        gctx.fillRect(sx, h.y, h.w, h.h);
+        gctx.fillStyle = "#fff";
+        gctx.fillRect(sx + 4, h.y + 4, 4, 4);
+        gctx.fillRect(sx + 14, h.y + 4, 4, 4);
+      });
+
+      gctx.fillStyle = "#e52521";
+      gctx.fillRect(player.x, player.y, player.w, player.h);
+      gctx.fillStyle = "#ffe0bd";
+      gctx.fillRect(player.x + 4, player.y + 4, 14, 10);
+
+      if (over) {
+        gctx.fillStyle = "rgba(0,0,0,0.55)";
+        gctx.fillRect(0, 0, W, H);
+        gctx.fillStyle = "#fff";
+        gctx.font = "20px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText("GAME OVER", W / 2, H / 2);
+      }
+    }
+
+    function loop(ts) {
+      gameRaf = requestAnimationFrame(loop);
+      const dt = Math.min(32, ts - last) / 16;
+      last = ts;
+      if (over) {
+        draw();
+        return;
+      }
+
+      jumpBuf = Math.max(0, jumpBuf - dt);
+      const speed = 3.2 + score * 0.01;
+      scroll += speed * dt;
+
+      if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) player.x -= 3.2 * dt;
+      if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) player.x += 3.2 * dt;
+      if (keys.has("ArrowUp") || keys.has(" ") || keys.has("w") || keys.has("W")) jump();
+
+      player.x = Math.max(20, Math.min(W - 60, player.x));
+      player.vy += 0.45 * dt;
+      player.y += player.vy * dt;
+      if (player.y >= GROUND - player.h) {
+        player.y = GROUND - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      }
+
+      while (hazards.length && hazards[0].x - scroll < -40) hazards.shift();
+      while (coins.length && coins[0].x - scroll < -40) coins.shift();
+
+      const farthest = Math.max(
+        scroll + W,
+        ...hazards.map((h) => h.x),
+        ...coins.map((c) => c.x),
+        scroll + W
+      );
+      if (farthest < scroll + W + 200) spawnAhead(farthest + 140 + Math.random() * 80);
+
+      hazards.forEach((h) => {
+        const sx = h.x - scroll;
+        if (
+          player.x < sx + h.w &&
+          player.x + player.w > sx &&
+          player.y < h.y + h.h &&
+          player.y + player.h > h.y
+        ) {
+          over = true;
+        }
+      });
+
+      coins.forEach((c) => {
+        if (c.taken) return;
+        const sx = c.x - scroll;
+        const dx = player.x + player.w / 2 - sx;
+        const dy = player.y + player.h / 2 - c.y;
+        if (dx * dx + dy * dy < (c.r + 12) * (c.r + 12)) {
+          c.taken = true;
+          score += 25;
+          setScore(score);
+        }
+      });
+
+      score = Math.max(score, Math.floor(scroll / 20));
+      setScore(score);
+      draw();
+    }
+
+    return {
+      id: "mario2d",
+      start() {
+        reset();
+        gameRaf = requestAnimationFrame(loop);
+      },
+      onKey(e) {
+        if (e.key === "ArrowUp" || e.key === " ") jump();
+      },
+      onPointer() {
+        jumpBuf = 8;
+        jump();
+      },
+      destroy() {},
+    };
+  }
+
+  function createArkanoid() {
+    const W = 360;
+    const H = 480;
+    els.gameCanvas.width = W;
+    els.gameCanvas.height = H;
+    let paddle, ball, bricks, score, over, won, last;
+
+    function reset() {
+      paddle = { x: W / 2, y: H - 28, w: 70, h: 12 };
+      ball = { x: W / 2, y: H - 50, vx: 3.2, vy: -3.4, r: 6 };
+      bricks = [];
+      const cols = 8;
+      const rows = 5;
+      const bw = 40;
+      const bh = 14;
+      const colors = ["#ff5c7a", "#ffb43c", "#39ffb6", "#00e5ff", "#c084fc"];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          bricks.push({
+            x: 12 + c * (bw + 4),
+            y: 40 + r * (bh + 6),
+            w: bw,
+            h: bh,
+            color: colors[r],
+            alive: true,
+          });
+        }
+      }
+      score = 0;
+      over = false;
+      won = false;
+      setScore(0);
+      last = performance.now();
+    }
+
+    function draw() {
+      gctx.fillStyle = "#050b14";
+      gctx.fillRect(0, 0, W, H);
+      bricks.forEach((b) => {
+        if (!b.alive) return;
+        gctx.fillStyle = b.color;
+        gctx.fillRect(b.x, b.y, b.w, b.h);
+      });
+      gctx.fillStyle = "#e8f4ff";
+      gctx.fillRect(paddle.x - paddle.w / 2, paddle.y, paddle.w, paddle.h);
+      gctx.beginPath();
+      gctx.fillStyle = "#ffd166";
+      gctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      gctx.fill();
+      if (over || won) {
+        gctx.fillStyle = "rgba(0,0,0,0.55)";
+        gctx.fillRect(0, 0, W, H);
+        gctx.fillStyle = "#fff";
+        gctx.font = "20px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText(won ? "YOU WIN" : "GAME OVER", W / 2, H / 2);
+      }
+    }
+
+    function loop(ts) {
+      gameRaf = requestAnimationFrame(loop);
+      const dt = Math.min(32, ts - last) / 16;
+      last = ts;
+      if (over || won) {
+        draw();
+        return;
+      }
+
+      if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) paddle.x -= 6 * dt;
+      if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) paddle.x += 6 * dt;
+      paddle.x = Math.max(paddle.w / 2, Math.min(W - paddle.w / 2, paddle.x));
+
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+
+      if (ball.x < ball.r || ball.x > W - ball.r) ball.vx *= -1;
+      if (ball.y < ball.r) ball.vy *= -1;
+      if (ball.y > H) over = true;
+
+      if (
+        ball.y + ball.r >= paddle.y &&
+        ball.y + ball.r <= paddle.y + paddle.h &&
+        ball.x > paddle.x - paddle.w / 2 &&
+        ball.x < paddle.x + paddle.w / 2 &&
+        ball.vy > 0
+      ) {
+        ball.vy *= -1;
+        ball.vx = ((ball.x - paddle.x) / (paddle.w / 2)) * 4;
+      }
+
+      bricks.forEach((b) => {
+        if (!b.alive) return;
+        if (
+          ball.x > b.x &&
+          ball.x < b.x + b.w &&
+          ball.y > b.y &&
+          ball.y < b.y + b.h
+        ) {
+          b.alive = false;
+          ball.vy *= -1;
+          score += 10;
+          setScore(score);
+        }
+      });
+
+      if (bricks.every((b) => !b.alive)) won = true;
+      draw();
+    }
+
+    return {
+      id: "arkanoid",
+      start() {
+        reset();
+        gameRaf = requestAnimationFrame(loop);
+      },
+      onPointer(e) {
+        const rect = els.gameCanvas.getBoundingClientRect();
+        paddle.x = ((e.clientX - rect.left) / rect.width) * W;
+      },
+      onPointerMove(e) {
+        const rect = els.gameCanvas.getBoundingClientRect();
+        paddle.x = ((e.clientX - rect.left) / rect.width) * W;
+      },
+      destroy() {},
+    };
+  }
+
   renderXp();
   renderQuests();
   renderTimer();
+  renderTokens();
+  renderShop();
+  applyTheme(state.activeTheme);
 
   // Unlock Web Audio on first user gesture (browser autoplay policy)
   const unlockAudio = () => {

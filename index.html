@@ -19,6 +19,11 @@
       <h1 class="brand-title">study with games</h1>
     </div>
     <p class="brand-tagline">Level up your focus. Clear your quests. Stay in the zone.</p>
+    <div class="token-badge" title="Earn 1 token each level-up">
+      <span class="token-icon" aria-hidden="true">◈</span>
+      <span id="token-count">0</span>
+      <span class="token-label">tokens</span>
+    </div>
   </header>
 
   <main class="layout">
@@ -124,7 +129,47 @@
 
       <p class="timer-hint" id="timer-hint">Finish a focus session for +25 XP.</p>
     </section>
+
+    <section class="panel shop-panel" aria-labelledby="shop-heading">
+      <div class="panel-head">
+        <h2 id="shop-heading">Token Shop</h2>
+        <span class="panel-chip">1 token / level</span>
+      </div>
+      <p class="shop-intro">Spend tokens on themes and reward games unlocked when a timer finishes.</p>
+
+      <h3 class="shop-subhead">Themes</h3>
+      <div class="shop-grid" id="theme-shop"></div>
+
+      <h3 class="shop-subhead">Games</h3>
+      <div class="shop-grid" id="game-shop"></div>
+    </section>
   </main>
+
+  <div class="modal" id="reward-modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="reward-title">
+      <button type="button" class="modal-close" id="reward-close" aria-label="Close">×</button>
+      <h2 id="reward-title">Timer complete!</h2>
+      <p class="modal-copy" id="reward-copy">Pick a game you own as a reward break.</p>
+      <div class="reward-games" id="reward-games"></div>
+      <button type="button" class="btn btn-ghost" id="reward-skip">Skip</button>
+    </div>
+  </div>
+
+  <div class="modal" id="game-modal" hidden>
+    <div class="modal-card modal-card-game" role="dialog" aria-modal="true" aria-labelledby="game-title">
+      <div class="game-bar">
+        <h2 id="game-title">Game</h2>
+        <p class="game-score" id="game-score">Score 0</p>
+        <button type="button" class="modal-close" id="game-close" aria-label="Close game">×</button>
+      </div>
+      <p class="game-help" id="game-help"></p>
+      <canvas id="game-canvas" width="360" height="480"></canvas>
+      <div class="game-actions">
+        <button type="button" class="btn btn-primary" id="game-restart">Restart</button>
+        <button type="button" class="btn btn-ghost" id="game-quit">Quit</button>
+      </div>
+    </div>
+  </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
