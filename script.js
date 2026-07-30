@@ -11,10 +11,10 @@
   };
 
   const RARITY_COST = {
-    common: 2,
-    rare: 3,
-    epic: 6,
-    legendary: 9,
+    common: 0,
+    rare: 0,
+    epic: 0,
+    legendary: 0,
   };
 
   const THEMES = [
@@ -360,12 +360,8 @@
       loaded?.tokens != null
         ? Math.max(0, loaded.tokens)
         : Math.max(0, startLevel - 1),
-    ownedThemes: Array.isArray(loaded?.ownedThemes)
-      ? loaded.ownedThemes.filter((id) => THEME_IDS.has(id))
-      : [],
-    ownedGames: Array.isArray(loaded?.ownedGames)
-      ? loaded.ownedGames.filter((id) => GAME_IDS.has(id))
-      : [],
+    ownedThemes: THEMES.map((t) => t.id),
+    ownedGames: GAMES.map((g) => g.id),
     activeTheme: THEME_IDS.has(loaded?.activeTheme) ? loaded.activeTheme : null,
     studySeconds: Math.max(0, loaded?.studySeconds ?? 0),
     questsCompleted: Math.max(0, loaded?.questsCompleted ?? 0),
@@ -1061,23 +1057,20 @@
 
   function buyTheme(id) {
     const item = THEMES.find((t) => t.id === id);
-    if (!item || state.ownedThemes.includes(id)) return;
-    if (state.tokens < item.cost) {
-      showToast("Not enough tokens");
-      return;
-    }
-    state.tokens -= item.cost;
-    state.ownedThemes.push(id);
+    if (!item) return;
+    if (!state.ownedThemes.includes(id)) state.ownedThemes.push(id);
     state.activeTheme = id;
     applyTheme(id);
-    renderTokens();
     renderShop();
     saveState();
-    showToast(`Unlocked ${item.name}`);
+    showToast(`Theme: ${item.name}`);
   }
 
   function equipTheme(id) {
-    if (!state.ownedThemes.includes(id)) return;
+    if (!state.ownedThemes.includes(id)) {
+      buyTheme(id);
+      return;
+    }
     if (state.activeTheme === id) {
       state.activeTheme = null;
       applyTheme(null);
@@ -1093,17 +1086,11 @@
 
   function buyGame(id) {
     const item = GAMES.find((g) => g.id === id);
-    if (!item || state.ownedGames.includes(id)) return;
-    if (state.tokens < item.cost) {
-      showToast("Not enough tokens");
-      return;
-    }
-    state.tokens -= item.cost;
-    state.ownedGames.push(id);
-    renderTokens();
+    if (!item) return;
+    if (!state.ownedGames.includes(id)) state.ownedGames.push(id);
     renderShop();
     saveState();
-    showToast(`Unlocked ${item.name}`);
+    showToast(`${item.name} ready`);
   }
 
   function shopCardHtml(item, type) {
@@ -1112,8 +1099,7 @@
         ? state.ownedThemes.includes(item.id)
         : state.ownedGames.includes(item.id);
     const active = type === "theme" && state.activeTheme === item.id;
-    const canAfford = state.tokens >= item.cost;
-    let actionLabel = `${item.cost} ◈`;
+    let actionLabel = "Free";
     let actionAttr = `data-buy-${type}="${item.id}"`;
     let disabled = "";
 
@@ -1121,10 +1107,8 @@
       actionLabel = active ? "Equipped" : "Equip";
       actionAttr = `data-equip-theme="${item.id}"`;
     } else if (owned && type === "game") {
-      actionLabel = "Owned";
+      actionLabel = "Playable";
       actionAttr = "";
-      disabled = "disabled";
-    } else if (!canAfford) {
       disabled = "disabled";
     }
 
