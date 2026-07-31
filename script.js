@@ -519,7 +519,7 @@
 
   function updateAiStatus() {
     if (!els.aiStatus) return;
-    els.aiStatus.textContent = state.settings.aiKey ? "AI Mode+LLM" : "AI Mode";
+    els.aiStatus.textContent = state.settings.aiKey ? "PulseSearch+LLM" : "PulseSearch";
   }
 
   function openSettingsModal() {
@@ -4161,7 +4161,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     if (!aiHistory.length) {
       els.aiChat.innerHTML = `<div class="ai-msg assistant">Hey${
         aiUserName ? ` ${escapeHtml(aiUserName)}` : ""
-      } — ask me anything. I’ll search the internet, then give you a clear answer with sources you can open.<br><br>Try: “Who invented the telephone?” or “hey explain black holes simply”${
+      } — ask me anything. I run <strong>PulseSearch</strong>: a light algorithm that scans online databases fast, then digs deeper only if it needs more data for a precise answer.<br><br>Try: “Who invented the telephone?” or “why is the sky blue?”${
         state.settings.aiKey ? "" : "<br><br><span style=\"opacity:.75\">Optional: add a free OpenRouter key in Settings for even richer wording.</span>"
       }</div>`;
       return;
@@ -4588,7 +4588,6 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   }
 
   async function researchSubtopics(subtopics) {
-    // Always include the original phrasing as first query if missing
     const jobs = subtopics.map(async (topic) => {
       const [wiki, ddg] = await Promise.all([wikiSearch(topic), ddgSearch(topic)]);
       return { topic, wiki, ddg };
@@ -4596,29 +4595,213 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return Promise.all(jobs);
   }
 
-  async function searchInternet(question, priorContent) {
-    const understood = understandQuestion(question, priorContent || "");
-    const queries = understood.queries.slice(0, 4);
-    const research = await researchSubtopics(queries);
-    let hits = rankHits(collectWebHits(research), question, understood.topic);
+  async function wikidataSearch(query) {
+    try {
+      const url =
+        "https://www.wikidata.org/w/api.php?action=wbsearchentities&language=en&type=item&limit=4&format=json&origin=*&search=" +
+        encodeURIComponent(query);
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.search || [])
+        .filter((s) => s.label && (s.description || s.concepturi))
+        .map((s) => ({
+          title: s.label,
+          extract: s.description || s.label,
+          url: s.concepturi || `https://www.wikidata.org/wiki/${s.id}`,
+          source: "Wikidata",
+          query,
+        }));
+    } catch {
+      return [];
+    }
+  }
 
-    // Deepen the best Wikipedia hit for a fuller answer
-    const bestWiki = hits.find((h) => h.source === "Wikipedia" && h.title);
-    if (bestWiki) {
-      const deep = await wikiDeepSummary(bestWiki.title);
-      if (deep?.extract && deep.extract.length >= (bestWiki.extract || "").length) {
-        hits = rankHits(
-          [
-            { ...bestWiki, ...deep, query: bestWiki.query || understood.topic },
-            ...hits.filter((h) => h.url !== bestWiki.url),
-          ],
-          question,
-          understood.topic
-        );
+  async function wikiRelatedTitles(title, limit = 6) {
+    try {
+      const url =
+        "https://en.wikipedia.org/w/api.php?action=query&prop=links&plnamespace=0&pllimit=" +
+        limit +
+        "&format=json&origin=*&titles=" +
+        encodeURIComponent(title);
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const page = Object.values(data.query?.pages || {})[0];
+      return (page?.links || [])
+        .map((l) => l.title)
+        .filter((t) => t && !/\(identifier\)$/i.test(t) && !/^List of /i.test(t))
+        .slice(0, limit);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * PulseSearch — lightweight adaptive research algorithm.
+   *
+   * Design goals:
+   * - Low system cost: few parallel requests, small payloads, early exit when confident
+   * - Online databases: Wikipedia, DuckDuckGo Instant Answer, Wikidata
+   * - Adaptive depth: if confidence is low, take longer and gather more data
+   *
+   * Phases:
+   *  1) FAST   — 1–2 queries, wiki + web abstracts
+   *  2) DEEP   — more queries + deepen best pages + Wikidata (only if needed)
+   *  3) PRECISE — related-page follow-ups for precision (only if still weak)
+   */
+  async function pulseSearch(question, priorContent, onProgress) {
+    const understood = understandQuestion(question, priorContent || "");
+    const allQueries = understood.queries;
+    const report = (msg) => {
+      if (typeof onProgress === "function") onProgress(msg);
+    };
+
+    // Accumulate flat hits, dedupe by URL, re-rank (keeps memory/CPU light)
+    const seenUrls = new Set();
+    let hits = [];
+    const researchBags = [];
+    const usedQueries = [];
+
+    const absorb = (bagList, flatExtra = []) => {
+      for (const bag of bagList) researchBags.push(bag);
+      const fresh = [...collectWebHits(bagList), ...flatExtra];
+      for (const h of fresh) {
+        if (!h?.url || seenUrls.has(h.url)) continue;
+        if (!h.extract && !h.text) continue;
+        seenUrls.add(h.url);
+        hits.push(h);
       }
+      hits = rankHits(hits, question, understood.topic);
+    };
+
+    const confidenceOf = (list) => {
+      if (!list.length) return 0;
+      const top = list[0];
+      const score = top.score || 0;
+      const len = (top.extract || top.text || "").length;
+      let c = Math.min(1, score / 14);
+      if (len >= 220) c += 0.15;
+      if (len >= 420) c += 0.1;
+      if (list.filter((h) => (h.score || 0) >= 5).length >= 2) c += 0.1;
+      if (top.source === "Wikipedia") c += 0.05;
+      // Intent-sensitive boosts
+      if (understood.intent === "who" && /\b(invent|scientist|physicist|author|born|died)\b/i.test(top.extract || "")) c += 0.08;
+      if (understood.intent === "why" && /\b(because|cause|due to|scattering|result)\b/i.test(top.extract || "")) c += 0.08;
+      return Math.max(0, Math.min(1, c));
+    };
+
+    // ----- Phase 1: FAST pulse (cheap) -----
+    report("PulseSearch · fast scan…");
+    const fastQueries = allQueries.slice(0, 2);
+    usedQueries.push(...fastQueries);
+    const fastBags = await researchSubtopics(fastQueries);
+    absorb(fastBags);
+
+    // One cheap Wikidata peek on the topic (tiny payload)
+    const wdFast = await wikidataSearch(understood.topic);
+    absorb([], wdFast);
+
+    let confidence = confidenceOf(hits);
+    let phase = 1;
+
+    // ----- Phase 2: DEEP pulse (only if needed) -----
+    if (confidence < 0.62) {
+      phase = 2;
+      report("Need more data — digging deeper…");
+      const deepQueries = allQueries.slice(2, 5).filter((q) => !usedQueries.includes(q));
+      // Also try a cleaned "what is / why" phrasing
+      const alt = [
+        `what is ${understood.topic}`,
+        understood.intent === "why" ? `why ${understood.topic}` : null,
+        understood.intent === "who" ? `who ${understood.topic}` : null,
+      ].filter(Boolean);
+      for (const q of alt) {
+        if (!usedQueries.includes(q)) deepQueries.push(q);
+      }
+      const next = [...new Set(deepQueries)].slice(0, 3);
+      usedQueries.push(...next);
+      if (next.length) {
+        const deepBags = await researchSubtopics(next);
+        absorb(deepBags);
+      }
+
+      // Deepen top 2 Wikipedia pages (more precise extracts)
+      const topWiki = hits.filter((h) => h.source === "Wikipedia").slice(0, 2);
+      const deepPages = await Promise.all(topWiki.map((h) => wikiDeepSummary(h.title)));
+      absorb(
+        [],
+        deepPages.filter(Boolean).map((p) => ({ ...p, query: understood.topic }))
+      );
+      confidence = confidenceOf(hits);
     }
 
-    return { queries, research, hits, understood };
+    // ----- Phase 3: PRECISE pulse (only if still weak) -----
+    if (confidence < 0.5) {
+      phase = 3;
+      report("Gathering extra sources for a more precise answer…");
+      const seed = hits.find((h) => h.source === "Wikipedia") || hits[0];
+      if (seed?.title) {
+        const related = await wikiRelatedTitles(seed.title, 5);
+        // Score related titles against the question; only fetch the best 2
+        const rankedRelated = related
+          .map((title) => ({
+            title,
+            score: scoreHit({ title, extract: title, source: "Wikipedia" }, question, understood.topic),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 2);
+
+        const relatedPages = await Promise.all(
+          rankedRelated.map(async (r) => {
+            const pages = await wikiMultiSearch(r.title);
+            return pages[0] || (await wikiDeepSummary(r.title));
+          })
+        );
+        absorb(
+          [],
+          relatedPages.filter(Boolean).map((p) => ({
+            title: p.title,
+            extract: p.extract,
+            url: p.url,
+            source: p.source || "Wikipedia",
+            query: understood.topic,
+          }))
+        );
+
+        // One more Wikidata pass with an alternate query
+        const wdDeep = await wikidataSearch(allQueries[0] || understood.topic);
+        absorb([], wdDeep);
+      }
+      confidence = confidenceOf(hits);
+    } else if (hits[0]?.source === "Wikipedia" && (hits[0].extract || "").length < 280) {
+      // Small precision boost: deepen best page even on medium confidence
+      report("Refining the top source…");
+      const deep = await wikiDeepSummary(hits[0].title);
+      if (deep) absorb([], [{ ...deep, query: understood.topic }]);
+      confidence = confidenceOf(hits);
+    }
+
+    report(
+      confidence >= 0.62
+        ? "Sources look solid — writing your answer…"
+        : "Writing the best answer from what I found…"
+    );
+
+    return {
+      queries: usedQueries,
+      research: researchBags,
+      hits,
+      understood,
+      confidence,
+      phase,
+      algorithm: "PulseSearch",
+    };
+  }
+
+  // Back-compat wrapper
+  async function searchInternet(question, priorContent, onProgress) {
+    return pulseSearch(question, priorContent, onProgress);
   }
 
   function trySolveMath(q) {
@@ -4944,18 +5127,22 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
 
       const lastAssistant = [...aiHistory].reverse().find((m) => m.role === "assistant");
       const understoodPreview = understandQuestion(q, lastAssistant?.content || "");
-      typing.textContent = `Got it — looking up “${understoodPreview.topic.slice(0, 48)}”…`;
+      typing.textContent = `PulseSearch · understanding “${understoodPreview.topic.slice(0, 42)}”…`;
 
       const mathBlock = trySolveMath(q);
-      const { queries, research, hits, understood } = await searchInternet(
-        q,
-        lastAssistant?.content || ""
-      );
-      typing.textContent = hits.length
-        ? `Found solid sources — writing your answer…`
-        : "Writing the best answer I can…";
+      const {
+        queries,
+        research,
+        hits,
+        understood,
+        confidence,
+        phase,
+      } = await pulseSearch(q, lastAssistant?.content || "", (msg) => {
+        typing.textContent = msg;
+      });
 
       const brief = researchBriefText(q, queries, research, mathBlock, hits);
+      const confPct = Math.round((confidence || 0) * 100);
 
       let content;
       let followups = [];
@@ -4964,7 +5151,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         try {
           content = await askLlmChat(
             q,
-            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nGive a solid direct answer.`
+            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nPulseSearch confidence: ${confPct}% (phase ${phase})\nGive a solid direct answer.`
           );
           followups = extractFollowups(content, q, research);
         } catch (err) {
@@ -4999,12 +5186,20 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         .replace(/\n#### Overview\n/gi, "\n")
         .trim();
 
+      const metaNote =
+        phase > 1
+          ? `\n\nPulseSearch went deeper (phase ${phase}, ${confPct}% confidence) to gather more data for a more precise answer.`
+          : "";
+
       aiHistory.push({
         role: "assistant",
-        content: cleaned,
+        content: cleaned + metaNote,
         subtopics: queries,
         followups,
         sources,
+        algorithm: "PulseSearch",
+        confidence,
+        phase,
       });
     } catch (err) {
       const msg = err?.message || "Something went wrong.";
