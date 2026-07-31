@@ -1954,6 +1954,10 @@ body.theme-mario .panel {
   width: min(420px, 100%);
 }
 
+.modal-card-game.wide-game {
+  width: min(680px, 96vw);
+}
+
 .modal-close {
   position: absolute;
   top: 0.7rem;

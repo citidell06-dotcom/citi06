@@ -43,6 +43,14 @@
 
   const GAMES = [
     {
+      id: "solitaire",
+      name: "Solitaire",
+      rarity: "common",
+      cost: 1,
+      desc: "Spider, FreeCell, and Pyramid — three classic card games.",
+      help: "Tap a variant to play · click cards to select & move · stock to deal",
+    },
+    {
       id: "arkanoid",
       name: "Arkanoid",
       rarity: "rare",
@@ -1410,8 +1418,10 @@
     els.gameHelp.textContent = meta.help;
     setScore(0);
     els.gameModal.hidden = false;
+    els.gameModal.querySelector(".modal-card-game")?.classList.toggle("wide-game", id === "solitaire");
 
-    if (id === "tetris") activeGame = createTetris();
+    if (id === "solitaire") activeGame = createSolitaire();
+    else if (id === "tetris") activeGame = createTetris();
     else if (id === "galaga") activeGame = createGalaga();
     else if (id === "arkanoid") activeGame = createArkanoid();
     else if (id === "mario2d") activeGame = createMario2d();
@@ -1438,6 +1448,1068 @@
 
   els.gameCanvas.addEventListener("pointerdown", (e) => activeGame?.onPointer?.(e));
   els.gameCanvas.addEventListener("pointermove", (e) => activeGame?.onPointerMove?.(e));
+
+  let solitairePrefs = { variant: null, spiderSuits: 1 };
+
+  function createSolitaire() {
+    const W = 640;
+    const H = 720;
+    els.gameCanvas.width = W;
+    els.gameCanvas.height = H;
+
+    const SUITS_ALL = ["S", "H", "D", "C"];
+    const SUIT_SYM = { S: "♠", H: "♥", D: "♦", C: "♣" };
+    const RANK_LABEL = { 1: "A", 11: "J", 12: "Q", 13: "K" };
+    const RED = new Set(["H", "D"]);
+
+    let screen = "menu"; // menu | spider-diff | play
+    let variant = null;
+    let spiderSuits = 1;
+    let score = 0;
+    let won = false;
+    let message = "";
+    let selected = null;
+
+    // shared piles filled per variant
+    let tableau = [];
+    let stock = [];
+    let waste = [];
+    let foundations = [];
+    let freecells = [];
+    let completed = 0;
+    let pyramid = [];
+    let stockPasses = 0;
+    let hitBoxes = [];
+
+    function rankLabel(r) {
+      return RANK_LABEL[r] || String(r);
+    }
+
+    function isRed(suit) {
+      return RED.has(suit);
+    }
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function makeCard(suit, rank, faceUp = false) {
+      return { suit, rank, faceUp, id: `${suit}${rank}-${Math.random().toString(36).slice(2, 7)}` };
+    }
+
+    function canvasPos(e) {
+      const rect = els.gameCanvas.getBoundingClientRect();
+      return {
+        x: ((e.clientX - rect.left) / rect.width) * W,
+        y: ((e.clientY - rect.top) / rect.height) * H,
+      };
+    }
+
+    function bumpScore(n) {
+      score = Math.max(0, score + n);
+      setScore(score);
+    }
+
+    function setHelp(text) {
+      els.gameHelp.textContent = text;
+    }
+
+    function drawFelt() {
+      const g = gctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "#0d4a32");
+      g.addColorStop(1, "#083222");
+      gctx.fillStyle = g;
+      gctx.fillRect(0, 0, W, H);
+      gctx.strokeStyle = "rgba(255,255,255,0.06)";
+      for (let y = 0; y < H; y += 28) {
+        gctx.beginPath();
+        gctx.moveTo(0, y);
+        gctx.lineTo(W, y);
+        gctx.stroke();
+      }
+    }
+
+    function drawCardFace(x, y, cw, ch, card, highlight) {
+      gctx.fillStyle = "#f7f3e8";
+      gctx.strokeStyle = highlight ? "#ffe066" : "#2a2a2a";
+      gctx.lineWidth = highlight ? 3 : 1.5;
+      roundRect(x, y, cw, ch, 6);
+      gctx.fill();
+      gctx.stroke();
+      gctx.fillStyle = isRed(card.suit) ? "#d62828" : "#1d1d1d";
+      gctx.font = `bold ${Math.max(11, cw * 0.28)}px Georgia, serif`;
+      gctx.textAlign = "left";
+      gctx.fillText(rankLabel(card.rank), x + 5, y + cw * 0.32);
+      gctx.font = `${Math.max(12, cw * 0.34)}px Georgia, serif`;
+      gctx.fillText(SUIT_SYM[card.suit], x + 5, y + cw * 0.62);
+      gctx.font = `${Math.max(16, cw * 0.42)}px Georgia, serif`;
+      gctx.textAlign = "center";
+      gctx.fillText(SUIT_SYM[card.suit], x + cw / 2, y + ch * 0.62);
+    }
+
+    function drawCardBack(x, y, cw, ch) {
+      gctx.fillStyle = "#1b3f8a";
+      gctx.strokeStyle = "#0d224e";
+      gctx.lineWidth = 1.5;
+      roundRect(x, y, cw, ch, 6);
+      gctx.fill();
+      gctx.stroke();
+      gctx.strokeStyle = "rgba(255,209,102,0.55)";
+      gctx.strokeRect(x + 5, y + 5, cw - 10, ch - 10);
+      gctx.fillStyle = "rgba(255,209,102,0.35)";
+      gctx.font = `bold ${Math.max(10, cw * 0.22)}px Orbitron, sans-serif`;
+      gctx.textAlign = "center";
+      gctx.fillText("◈", x + cw / 2, y + ch / 2 + 4);
+    }
+
+    function drawEmptySlot(x, y, cw, ch, label) {
+      gctx.strokeStyle = "rgba(255,255,255,0.22)";
+      gctx.lineWidth = 1.5;
+      gctx.setLineDash([4, 4]);
+      roundRect(x, y, cw, ch, 6);
+      gctx.stroke();
+      gctx.setLineDash([]);
+      if (label) {
+        gctx.fillStyle = "rgba(255,255,255,0.28)";
+        gctx.font = "11px Rajdhani, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText(label, x + cw / 2, y + ch / 2 + 4);
+      }
+    }
+
+    function roundRect(x, y, w, h, r) {
+      gctx.beginPath();
+      gctx.moveTo(x + r, y);
+      gctx.arcTo(x + w, y, x + w, y + h, r);
+      gctx.arcTo(x + w, y + h, x, y + h, r);
+      gctx.arcTo(x, y + h, x, y, r);
+      gctx.arcTo(x, y, x + w, y, r);
+      gctx.closePath();
+    }
+
+    function drawButton(box, label, active) {
+      gctx.fillStyle = active ? "rgba(0,229,255,0.22)" : "rgba(0,0,0,0.35)";
+      gctx.strokeStyle = active ? "#00e5ff" : "rgba(255,255,255,0.25)";
+      gctx.lineWidth = 2;
+      roundRect(box.x, box.y, box.w, box.h, 10);
+      gctx.fill();
+      gctx.stroke();
+      gctx.fillStyle = "#e8f4ff";
+      gctx.font = "bold 16px Rajdhani, sans-serif";
+      gctx.textAlign = "center";
+      gctx.fillText(label, box.x + box.w / 2, box.y + box.h / 2 + 5);
+    }
+
+    function hit(box, p) {
+      return p.x >= box.x && p.x <= box.x + box.w && p.y >= box.y && p.y <= box.y + box.h;
+    }
+
+    function drawHudBar(title) {
+      gctx.fillStyle = "rgba(0,0,0,0.35)";
+      gctx.fillRect(0, 0, W, 44);
+      gctx.fillStyle = "#fff";
+      gctx.font = "14px Orbitron, sans-serif";
+      gctx.textAlign = "left";
+      gctx.fillText(title, 12, 28);
+      if (message) {
+        gctx.fillStyle = "#ffd166";
+        gctx.font = "13px Rajdhani, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText(message, W / 2, 28);
+      }
+      if (won) {
+        gctx.fillStyle = "rgba(0,0,0,0.55)";
+        gctx.fillRect(0, H / 2 - 40, W, 80);
+        gctx.fillStyle = "#39ffb6";
+        gctx.font = "28px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText("YOU WIN!", W / 2, H / 2 + 10);
+      }
+    }
+
+    /* ---------- MENU ---------- */
+    function drawMenu() {
+      hitBoxes = [];
+      drawFelt();
+      gctx.fillStyle = "#fff";
+      gctx.font = "26px Orbitron, sans-serif";
+      gctx.textAlign = "center";
+      gctx.fillText("SOLITAIRE", W / 2, 90);
+      gctx.fillStyle = "rgba(255,255,255,0.7)";
+      gctx.font = "16px Rajdhani, sans-serif";
+      gctx.fillText("Pick a classic variant", W / 2, 122);
+
+      const options = [
+        { id: "spider", label: "Spider Solitaire", sub: "2 decks · build same-suit runs" },
+        { id: "freecell", label: "FreeCell", sub: "1 deck · open info · free cells" },
+        { id: "pyramid", label: "Pyramid", sub: "Pair cards that add to 13" },
+      ];
+      options.forEach((opt, i) => {
+        const box = { x: W / 2 - 180, y: 170 + i * 110, w: 360, h: 88, action: "pick", variant: opt.id };
+        hitBoxes.push(box);
+        drawButton(box, "", false);
+        gctx.fillStyle = "#00e5ff";
+        gctx.font = "bold 20px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText(opt.label, box.x + box.w / 2, box.y + 38);
+        gctx.fillStyle = "rgba(255,255,255,0.65)";
+        gctx.font = "15px Rajdhani, sans-serif";
+        gctx.fillText(opt.sub, box.x + box.w / 2, box.y + 62);
+      });
+    }
+
+    function drawSpiderDiff() {
+      hitBoxes = [];
+      drawFelt();
+      gctx.fillStyle = "#fff";
+      gctx.font = "22px Orbitron, sans-serif";
+      gctx.textAlign = "center";
+      gctx.fillText("SPIDER — SUITS", W / 2, 90);
+      gctx.fillStyle = "rgba(255,255,255,0.65)";
+      gctx.font = "15px Rajdhani, sans-serif";
+      gctx.fillText("More suits = harder", W / 2, 118);
+
+      const diffs = [
+        { suits: 1, label: "1 Suit — Easy", sub: "Spades only" },
+        { suits: 2, label: "2 Suits — Medium", sub: "Spades & Hearts" },
+        { suits: 4, label: "4 Suits — Hard", sub: "All suits" },
+      ];
+      diffs.forEach((d, i) => {
+        const box = { x: W / 2 - 170, y: 160 + i * 100, w: 340, h: 80, action: "spider-start", suits: d.suits };
+        hitBoxes.push(box);
+        drawButton(box, "", spiderSuits === d.suits);
+        gctx.fillStyle = "#ffd166";
+        gctx.font = "bold 18px Orbitron, sans-serif";
+        gctx.textAlign = "center";
+        gctx.fillText(d.label, box.x + box.w / 2, box.y + 35);
+        gctx.fillStyle = "rgba(255,255,255,0.65)";
+        gctx.font = "14px Rajdhani, sans-serif";
+        gctx.fillText(d.sub, box.x + box.w / 2, box.y + 58);
+      });
+      const back = { x: 24, y: H - 60, w: 110, h: 40, action: "menu" };
+      hitBoxes.push(back);
+      drawButton(back, "← Menu", false);
+    }
+
+    /* ---------- SPIDER ---------- */
+    function buildSpiderDeck(suits) {
+      const suitPool = suits === 1 ? ["S"] : suits === 2 ? ["S", "H"] : SUITS_ALL;
+      const deck = [];
+      // 104 cards: for 1 suit use 8 copies of spades; 2 suits 4 each; 4 suits 2 decks
+      const copies = 104 / (suitPool.length * 13);
+      for (let c = 0; c < copies; c++) {
+        suitPool.forEach((s) => {
+          for (let r = 1; r <= 13; r++) deck.push(makeCard(s, r, false));
+        });
+      }
+      return shuffle(deck);
+    }
+
+    function startSpider(suits) {
+      spiderSuits = suits;
+      solitairePrefs = { variant: "spider", spiderSuits: suits };
+      variant = "spider";
+      screen = "play";
+      score = 0;
+      won = false;
+      message = "";
+      selected = null;
+      completed = 0;
+      setScore(0);
+      setHelp("Spider: build same-suit K→A · move on any next-higher rank · stock deals to all columns");
+
+      const deck = buildSpiderDeck(suits);
+      tableau = Array.from({ length: 10 }, () => []);
+      const counts = [6, 6, 6, 6, 5, 5, 5, 5, 5, 5];
+      counts.forEach((n, col) => {
+        for (let i = 0; i < n; i++) {
+          const card = deck.pop();
+          card.faceUp = i === n - 1;
+          tableau[col].push(card);
+        }
+      });
+      stock = deck; // 50 left
+      waste = [];
+      foundations = [];
+      draw();
+    }
+
+    function spiderSequenceFrom(col, idx) {
+      const pile = tableau[col];
+      if (idx < 0 || idx >= pile.length || !pile[idx].faceUp) return null;
+      for (let i = idx; i < pile.length - 1; i++) {
+        const a = pile[i];
+        const b = pile[i + 1];
+        if (a.suit !== b.suit || a.rank !== b.rank + 1) return null;
+      }
+      return pile.slice(idx);
+    }
+
+    function spiderCanDrop(seq, destCol) {
+      const dest = tableau[destCol];
+      if (!dest.length) return true;
+      const top = dest[dest.length - 1];
+      return top.faceUp && top.rank === seq[0].rank + 1;
+    }
+
+    function spiderRemoveComplete(col) {
+      const pile = tableau[col];
+      if (pile.length < 13) return;
+      const start = pile.length - 13;
+      const run = pile.slice(start);
+      if (!run.every((c) => c.faceUp)) return;
+      for (let i = 0; i < 12; i++) {
+        if (run[i].suit !== run[i + 1].suit || run[i].rank !== run[i + 1].rank + 1) return;
+      }
+      if (run[0].rank !== 13 || run[12].rank !== 1) return;
+      tableau[col] = pile.slice(0, start);
+      completed += 1;
+      bumpScore(100);
+      message = `Cleared ${completed}/8`;
+      revealTop(col);
+      if (completed >= 8) {
+        won = true;
+        bumpScore(500);
+        message = "All sequences cleared!";
+        showToast("Spider clear!");
+      }
+    }
+
+    function revealTop(col) {
+      const pile = tableau[col];
+      if (pile.length && !pile[pile.length - 1].faceUp) {
+        pile[pile.length - 1].faceUp = true;
+        bumpScore(5);
+      }
+    }
+
+    function spiderDealStock() {
+      if (won) return;
+      if (!stock.length) {
+        message = "No stock left";
+        return;
+      }
+      if (tableau.some((p) => !p.length)) {
+        message = "Fill empty columns before dealing";
+        return;
+      }
+      for (let c = 0; c < 10; c++) {
+        const card = stock.pop();
+        if (!card) break;
+        card.faceUp = true;
+        tableau[c].push(card);
+        spiderRemoveComplete(c);
+      }
+      bumpScore(-10);
+      selected = null;
+      message = "";
+    }
+
+    function drawSpider() {
+      hitBoxes = [];
+      drawFelt();
+      const cw = 54;
+      const ch = 74;
+      const gap = 8;
+      const left = (W - (10 * cw + 9 * gap)) / 2;
+      const topY = 58;
+
+      // stock
+      const stockBox = { x: left, y: topY, w: cw, h: ch, action: "spider-stock" };
+      hitBoxes.push(stockBox);
+      if (stock.length) drawCardBack(stockBox.x, stockBox.y, cw, ch);
+      else drawEmptySlot(stockBox.x, stockBox.y, cw, ch, "Stock");
+      gctx.fillStyle = "#fff";
+      gctx.font = "12px Rajdhani, sans-serif";
+      gctx.textAlign = "left";
+      gctx.fillText(`${stock.length} in stock · cleared ${completed}/8`, left + cw + 12, topY + 24);
+
+      const menuBtn = { x: W - 120, y: 10, w: 100, h: 28, action: "menu" };
+      hitBoxes.push(menuBtn);
+      drawButton(menuBtn, "Menu", false);
+
+      const baseY = topY + ch + 18;
+      const peek = 22;
+      for (let c = 0; c < 10; c++) {
+        const x = left + c * (cw + gap);
+        const pile = tableau[c];
+        if (!pile.length) {
+          const box = { x, y: baseY, w: cw, h: ch, action: "spider-col", col: c, idx: -1 };
+          hitBoxes.push(box);
+          drawEmptySlot(x, baseY, cw, ch);
+          continue;
+        }
+        pile.forEach((card, idx) => {
+          const y = baseY + idx * peek;
+          const box = { x, y, w: cw, h: idx === pile.length - 1 ? ch : peek, action: "spider-col", col: c, idx };
+          hitBoxes.push(box);
+          const hl = selected && selected.col === c && idx >= selected.idx;
+          if (card.faceUp) drawCardFace(x, y, cw, ch, card, hl);
+          else drawCardBack(x, y, cw, ch);
+        });
+      }
+      drawHudBar(`Spider · ${spiderSuits} suit${spiderSuits > 1 ? "s" : ""}`);
+    }
+
+    function onSpiderClick(p) {
+      for (let i = hitBoxes.length - 1; i >= 0; i--) {
+        const box = hitBoxes[i];
+        if (!hit(box, p)) continue;
+        if (box.action === "menu") {
+          goMenu();
+          return;
+        }
+        if (box.action === "spider-stock") {
+          spiderDealStock();
+          draw();
+          return;
+        }
+        if (box.action === "spider-col") {
+          const col = box.col;
+          const idx = box.idx;
+          if (selected) {
+            if (selected.col === col) {
+              selected = null;
+              draw();
+              return;
+            }
+            const seq = spiderSequenceFrom(selected.col, selected.idx);
+            if (seq && spiderCanDrop(seq, col)) {
+              tableau[selected.col].splice(selected.idx, seq.length);
+              tableau[col].push(...seq);
+              revealTop(selected.col);
+              spiderRemoveComplete(col);
+              bumpScore(2);
+              selected = null;
+              message = "";
+            } else {
+              message = "Invalid move";
+              selected = null;
+            }
+            draw();
+            return;
+          }
+          if (idx < 0) return;
+          const seq = spiderSequenceFrom(col, idx);
+          if (!seq) {
+            message = "Need a same-suit run";
+            draw();
+            return;
+          }
+          selected = { col, idx };
+          message = "";
+          draw();
+          return;
+        }
+      }
+      selected = null;
+      draw();
+    }
+
+    /* ---------- FREECELL ---------- */
+    function startFreeCell() {
+      solitairePrefs = { variant: "freecell", spiderSuits };
+      variant = "freecell";
+      screen = "play";
+      score = 0;
+      won = false;
+      message = "";
+      selected = null;
+      setScore(0);
+      setHelp("FreeCell: build ↓ alternating colors · A→K by suit on foundations · use free cells");
+
+      const deck = shuffle(
+        SUITS_ALL.flatMap((s) => Array.from({ length: 13 }, (_, i) => makeCard(s, i + 1, true)))
+      );
+      tableau = Array.from({ length: 8 }, () => []);
+      deck.forEach((card, i) => tableau[i % 8].push(card));
+      freecells = [null, null, null, null];
+      foundations = [[], [], [], []]; // by suit index
+      draw();
+    }
+
+    function freeCellEmptyCount() {
+      return freecells.filter((c) => !c).length;
+    }
+
+    function freeTableauCount(excludeCol) {
+      return tableau.filter((p, i) => i !== excludeCol && !p.length).length;
+    }
+
+    function maxFreeMove(destEmpty) {
+      const cells = freeCellEmptyCount();
+      let emptyCols = freeTableauCount(-1);
+      if (destEmpty) emptyCols = Math.max(0, emptyCols - 1);
+      return (1 + cells) * 2 ** emptyCols;
+    }
+
+    function isAltDesc(a, b) {
+      return a.rank === b.rank + 1 && isRed(a.suit) !== isRed(b.suit);
+    }
+
+    function freeSeqFrom(col, idx) {
+      const pile = tableau[col];
+      if (idx < 0 || idx >= pile.length) return null;
+      for (let i = idx; i < pile.length - 1; i++) {
+        if (!isAltDesc(pile[i], pile[i + 1])) return null;
+      }
+      return pile.slice(idx);
+    }
+
+    function foundationIndex(suit) {
+      return SUITS_ALL.indexOf(suit);
+    }
+
+    function canToFoundation(card) {
+      const fi = foundationIndex(card.suit);
+      const pile = foundations[fi];
+      if (!pile.length) return card.rank === 1;
+      return pile[pile.length - 1].rank === card.rank - 1;
+    }
+
+    function checkFreeWin() {
+      if (foundations.every((p) => p.length === 13)) {
+        won = true;
+        bumpScore(500);
+        message = "FreeCell cleared!";
+        showToast("FreeCell win!");
+      }
+    }
+
+    function tryAutoFoundation() {
+      let moved = true;
+      while (moved) {
+        moved = false;
+        for (let i = 0; i < 4; i++) {
+          if (freecells[i] && canToFoundation(freecells[i])) {
+            foundations[foundationIndex(freecells[i].suit)].push(freecells[i]);
+            freecells[i] = null;
+            bumpScore(15);
+            moved = true;
+          }
+        }
+        for (let c = 0; c < 8; c++) {
+          const pile = tableau[c];
+          if (!pile.length) continue;
+          const top = pile[pile.length - 1];
+          if (canToFoundation(top)) {
+            foundations[foundationIndex(top.suit)].push(pile.pop());
+            bumpScore(15);
+            moved = true;
+          }
+        }
+      }
+      checkFreeWin();
+    }
+
+    function drawFreeCell() {
+      hitBoxes = [];
+      drawFelt();
+      const cw = 58;
+      const ch = 80;
+      const topY = 54;
+      const gap = 10;
+
+      const menuBtn = { x: W - 120, y: 10, w: 100, h: 28, action: "menu" };
+      hitBoxes.push(menuBtn);
+      drawButton(menuBtn, "Menu", false);
+
+      // freecells
+      for (let i = 0; i < 4; i++) {
+        const x = 20 + i * (cw + gap);
+        const box = { x, y: topY, w: cw, h: ch, action: "fc-cell", idx: i };
+        hitBoxes.push(box);
+        if (freecells[i]) {
+          const hl = selected && selected.type === "cell" && selected.idx === i;
+          drawCardFace(x, topY, cw, ch, freecells[i], hl);
+        } else drawEmptySlot(x, topY, cw, ch, "Free");
+      }
+
+      // foundations
+      for (let i = 0; i < 4; i++) {
+        const x = W - 20 - (4 - i) * (cw + gap);
+        const box = { x, y: topY, w: cw, h: ch, action: "fc-found", idx: i };
+        hitBoxes.push(box);
+        const pile = foundations[i];
+        if (pile.length) drawCardFace(x, topY, cw, ch, pile[pile.length - 1], false);
+        else drawEmptySlot(x, topY, cw, ch, SUIT_SYM[SUITS_ALL[i]]);
+      }
+
+      const baseY = topY + ch + 24;
+      const peek = 24;
+      const colGap = (W - 40 - 8 * cw) / 7;
+      for (let c = 0; c < 8; c++) {
+        const x = 20 + c * (cw + colGap);
+        const pile = tableau[c];
+        if (!pile.length) {
+          const box = { x, y: baseY, w: cw, h: ch, action: "fc-col", col: c, idx: -1 };
+          hitBoxes.push(box);
+          drawEmptySlot(x, baseY, cw, ch);
+          continue;
+        }
+        pile.forEach((card, idx) => {
+          const y = baseY + idx * peek;
+          const box = {
+            x, y, w: cw,
+            h: idx === pile.length - 1 ? ch : peek,
+            action: "fc-col", col: c, idx,
+          };
+          hitBoxes.push(box);
+          const hl = selected && selected.type === "col" && selected.col === c && idx >= selected.idx;
+          drawCardFace(x, y, cw, ch, card, hl);
+        });
+      }
+      drawHudBar("FreeCell");
+    }
+
+    function getSelectedFreeCards() {
+      if (!selected) return null;
+      if (selected.type === "cell") {
+        const card = freecells[selected.idx];
+        return card ? [card] : null;
+      }
+      if (selected.type === "col") return freeSeqFrom(selected.col, selected.idx);
+      return null;
+    }
+
+    function clearSelectedFree() {
+      if (!selected) return;
+      if (selected.type === "cell") freecells[selected.idx] = null;
+      else if (selected.type === "col") tableau[selected.col].splice(selected.idx);
+    }
+
+    function onFreeCellClick(p) {
+      for (let i = hitBoxes.length - 1; i >= 0; i--) {
+        const box = hitBoxes[i];
+        if (!hit(box, p)) continue;
+        if (box.action === "menu") {
+          goMenu();
+          return;
+        }
+
+        if (box.action === "fc-found") {
+          const cards = getSelectedFreeCards();
+          if (cards && cards.length === 1 && canToFoundation(cards[0])) {
+            foundations[foundationIndex(cards[0].suit)].push(cards[0]);
+            clearSelectedFree();
+            selected = null;
+            bumpScore(15);
+            tryAutoFoundation();
+            message = "";
+          } else if (selected) {
+            message = "Can't place on foundation";
+            selected = null;
+          }
+          draw();
+          return;
+        }
+
+        if (box.action === "fc-cell") {
+          if (selected) {
+            if (selected.type === "cell" && selected.idx === box.idx) {
+              selected = null;
+              draw();
+              return;
+            }
+            const cards = getSelectedFreeCards();
+            if (cards && cards.length === 1 && !freecells[box.idx]) {
+              freecells[box.idx] = cards[0];
+              clearSelectedFree();
+              selected = null;
+              message = "";
+              tryAutoFoundation();
+            } else {
+              message = "Free cell holds one card";
+              selected = null;
+            }
+            draw();
+            return;
+          }
+          if (freecells[box.idx]) {
+            selected = { type: "cell", idx: box.idx };
+            message = "";
+            draw();
+          }
+          return;
+        }
+
+        if (box.action === "fc-col") {
+          const col = box.col;
+          if (selected) {
+            if (selected.type === "col" && selected.col === col) {
+              selected = null;
+              draw();
+              return;
+            }
+            const cards = getSelectedFreeCards();
+            if (!cards || !cards.length) {
+              selected = null;
+              draw();
+              return;
+            }
+            const dest = tableau[col];
+            const destEmpty = !dest.length;
+            const max = maxFreeMove(destEmpty);
+            if (cards.length > max) {
+              message = `Can move ${max} card${max === 1 ? "" : "s"} max`;
+              selected = null;
+              draw();
+              return;
+            }
+            const ok = destEmpty || isAltDesc(dest[dest.length - 1], cards[0]);
+            if (ok) {
+              clearSelectedFree();
+              dest.push(...cards);
+              selected = null;
+              bumpScore(2);
+              message = "";
+              tryAutoFoundation();
+            } else {
+              message = "Build down, alternate colors";
+              selected = null;
+            }
+            draw();
+            return;
+          }
+          if (box.idx < 0) return;
+          const seq = freeSeqFrom(col, box.idx);
+          if (!seq) {
+            message = "Not a valid stack";
+            draw();
+            return;
+          }
+          selected = { type: "col", col, idx: box.idx };
+          message = "";
+          draw();
+          return;
+        }
+      }
+      selected = null;
+      draw();
+    }
+
+    /* ---------- PYRAMID ---------- */
+    function startPyramid() {
+      solitairePrefs = { variant: "pyramid", spiderSuits };
+      variant = "pyramid";
+      screen = "play";
+      score = 0;
+      won = false;
+      message = "";
+      selected = null;
+      stockPasses = 0;
+      setScore(0);
+      setHelp("Pyramid: pair uncovered cards that add to 13 · Kings remove alone · stock flips to waste");
+
+      const deck = shuffle(
+        SUITS_ALL.flatMap((s) => Array.from({ length: 13 }, (_, i) => makeCard(s, i + 1, true)))
+      );
+      pyramid = [];
+      let n = 0;
+      for (let row = 0; row < 7; row++) {
+        pyramid[row] = [];
+        for (let col = 0; col <= row; col++) {
+          pyramid[row][col] = deck[n++];
+        }
+      }
+      stock = deck.slice(n).map((c) => ({ ...c, faceUp: false }));
+      waste = [];
+      draw();
+    }
+
+    function pyramidCovered(row, col) {
+      if (row >= 6) return false;
+      const a = pyramid[row + 1][col];
+      const b = pyramid[row + 1][col + 1];
+      return Boolean(a || b);
+    }
+
+    function pyramidValue(card) {
+      return card.rank;
+    }
+
+    function removePyramidCard(row, col) {
+      pyramid[row][col] = null;
+    }
+
+    function pyramidCleared() {
+      return pyramid.every((row) => row.every((c) => !c));
+    }
+
+    function drawPyramid() {
+      hitBoxes = [];
+      drawFelt();
+      const cw = 52;
+      const ch = 72;
+      const menuBtn = { x: W - 120, y: 10, w: 100, h: 28, action: "menu" };
+      hitBoxes.push(menuBtn);
+      drawButton(menuBtn, "Menu", false);
+
+      const startY = 58;
+      for (let row = 0; row < 7; row++) {
+        const count = row + 1;
+        const rowW = count * cw + (count - 1) * 6;
+        const startX = (W - rowW) / 2;
+        for (let col = 0; col < count; col++) {
+          const card = pyramid[row][col];
+          const x = startX + col * (cw + 6);
+          const y = startY + row * (ch * 0.48);
+          if (!card) continue;
+          const covered = pyramidCovered(row, col);
+          const box = { x, y, w: cw, h: ch, action: "pyr-card", row, col };
+          hitBoxes.push(box);
+          const hl =
+            selected &&
+            selected.type === "pyr" &&
+            selected.row === row &&
+            selected.col === col;
+          drawCardFace(x, y, cw, ch, card, hl);
+          if (covered) {
+            gctx.fillStyle = "rgba(0,0,0,0.28)";
+            roundRect(x, y, cw, ch, 6);
+            gctx.fill();
+          }
+        }
+      }
+
+      const stockX = W / 2 - cw - 20;
+      const wasteX = W / 2 + 20;
+      const pileY = H - 130;
+      const stockBox = { x: stockX, y: pileY, w: cw, h: ch, action: "pyr-stock" };
+      const wasteBox = { x: wasteX, y: pileY, w: cw, h: ch, action: "pyr-waste" };
+      hitBoxes.push(stockBox, wasteBox);
+      if (stock.length) drawCardBack(stockX, pileY, cw, ch);
+      else drawEmptySlot(stockX, pileY, cw, ch, stockPasses < 1 ? "Flip" : "Empty");
+      if (waste.length) {
+        const hl = selected && selected.type === "waste";
+        drawCardFace(wasteX, pileY, cw, ch, waste[waste.length - 1], hl);
+      } else drawEmptySlot(wasteX, pileY, cw, ch, "Waste");
+
+      gctx.fillStyle = "rgba(255,255,255,0.7)";
+      gctx.font = "13px Rajdhani, sans-serif";
+      gctx.textAlign = "center";
+      gctx.fillText(`Stock ${stock.length} · Waste ${waste.length}`, W / 2, pileY + ch + 22);
+
+      drawHudBar("Pyramid · pair to 13");
+    }
+
+    function pyramidTryPair(a, b) {
+      return pyramidValue(a) + pyramidValue(b) === 13;
+    }
+
+    function removeSelectionCard(sel) {
+      if (sel.type === "pyr") removePyramidCard(sel.row, sel.col);
+      else if (sel.type === "waste") waste.pop();
+    }
+
+    function getSelCard(sel) {
+      if (sel.type === "pyr") return pyramid[sel.row][sel.col];
+      if (sel.type === "waste") return waste[waste.length - 1] || null;
+      return null;
+    }
+
+    function afterPyramidRemove() {
+      bumpScore(20);
+      selected = null;
+      message = "";
+      if (pyramidCleared()) {
+        won = true;
+        bumpScore(300);
+        message = "Pyramid cleared!";
+        showToast("Pyramid win!");
+      }
+    }
+
+    function onPyramidClick(p) {
+      for (let i = hitBoxes.length - 1; i >= 0; i--) {
+        const box = hitBoxes[i];
+        if (!hit(box, p)) continue;
+
+        if (box.action === "menu") {
+          goMenu();
+          return;
+        }
+
+        if (box.action === "pyr-stock") {
+          if (stock.length) {
+            const card = stock.pop();
+            card.faceUp = true;
+            waste.push(card);
+            selected = null;
+            message = "";
+          } else if (waste.length && stockPasses < 1) {
+            stockPasses += 1;
+            while (waste.length) {
+              const c = waste.pop();
+              c.faceUp = false;
+              stock.push(c);
+            }
+            message = "Stock recycled";
+            selected = null;
+          } else {
+            message = "No more stock";
+          }
+          draw();
+          return;
+        }
+
+        if (box.action === "pyr-waste") {
+          if (!waste.length) return;
+          const card = waste[waste.length - 1];
+          if (card.rank === 13) {
+            waste.pop();
+            afterPyramidRemove();
+            draw();
+            return;
+          }
+          if (selected) {
+            if (selected.type === "waste") {
+              selected = null;
+              draw();
+              return;
+            }
+            const other = getSelCard(selected);
+            if (other && pyramidTryPair(card, other)) {
+              waste.pop();
+              removeSelectionCard(selected);
+              afterPyramidRemove();
+            } else {
+              message = "Need sum of 13";
+              selected = null;
+            }
+            draw();
+            return;
+          }
+          selected = { type: "waste" };
+          message = "";
+          draw();
+          return;
+        }
+
+        if (box.action === "pyr-card") {
+          const { row, col } = box;
+          const card = pyramid[row][col];
+          if (!card || pyramidCovered(row, col)) {
+            message = "Card is covered";
+            draw();
+            return;
+          }
+          if (card.rank === 13) {
+            removePyramidCard(row, col);
+            afterPyramidRemove();
+            draw();
+            return;
+          }
+          if (selected) {
+            if (selected.type === "pyr" && selected.row === row && selected.col === col) {
+              selected = null;
+              draw();
+              return;
+            }
+            const other = getSelCard(selected);
+            if (other && pyramidTryPair(card, other)) {
+              removePyramidCard(row, col);
+              removeSelectionCard(selected);
+              afterPyramidRemove();
+            } else {
+              message = "Need sum of 13";
+              selected = { type: "pyr", row, col };
+            }
+            draw();
+            return;
+          }
+          selected = { type: "pyr", row, col };
+          message = "";
+          draw();
+          return;
+        }
+      }
+      selected = null;
+      draw();
+    }
+
+    /* ---------- SHELL ---------- */
+    function goMenu() {
+      screen = "menu";
+      variant = null;
+      solitairePrefs.variant = null;
+      won = false;
+      selected = null;
+      message = "";
+      setHelp("Tap a variant to play · click cards to select & move · stock to deal");
+      setScore(0);
+      draw();
+    }
+
+    function draw() {
+      if (screen === "menu") drawMenu();
+      else if (screen === "spider-diff") drawSpiderDiff();
+      else if (variant === "spider") drawSpider();
+      else if (variant === "freecell") drawFreeCell();
+      else if (variant === "pyramid") drawPyramid();
+    }
+
+    function onClick(e) {
+      if (won && screen === "play") {
+        // allow menu after win
+      }
+      const p = canvasPos(e);
+      if (screen === "menu") {
+        for (const box of hitBoxes) {
+          if (!hit(box, p)) continue;
+          if (box.variant === "spider") {
+            screen = "spider-diff";
+            draw();
+            return;
+          }
+          if (box.variant === "freecell") {
+            startFreeCell();
+            return;
+          }
+          if (box.variant === "pyramid") {
+            startPyramid();
+            return;
+          }
+        }
+        return;
+      }
+      if (screen === "spider-diff") {
+        for (const box of hitBoxes) {
+          if (!hit(box, p)) continue;
+          if (box.action === "menu") {
+            goMenu();
+            return;
+          }
+          if (box.action === "spider-start") {
+            startSpider(box.suits);
+            return;
+          }
+        }
+        return;
+      }
+      if (variant === "spider") onSpiderClick(p);
+      else if (variant === "freecell") onFreeCellClick(p);
+      else if (variant === "pyramid") onPyramidClick(p);
+    }
+
+    return {
+      id: "solitaire",
+      start() {
+        if (solitairePrefs.variant === "spider") startSpider(solitairePrefs.spiderSuits || 1);
+        else if (solitairePrefs.variant === "freecell") startFreeCell();
+        else if (solitairePrefs.variant === "pyramid") startPyramid();
+        else goMenu();
+      },
+      onPointer(e) {
+        onClick(e);
+      },
+      destroy() {},
+    };
+  }
 
   function createTetris() {
     const COLS = 10;
