@@ -55,7 +55,7 @@
       rarity: "common",
       cost: 1,
       desc: "Spider, FreeCell, and Pyramid — three classic card games.",
-      help: "Tap a variant to play · click cards to select & move · stock to deal",
+      help: "Tap a variant · click cards · stock to deal · classic card SFX (no BGM)",
     },
     {
       id: "arkanoid",
@@ -63,7 +63,7 @@
       rarity: "rare",
       cost: RARITY_COST.rare,
       desc: "Break bricks with the paddle.",
-      help: "← → or A/D move · click/tap also works",
+      help: "← → or A/D · click/tap · start jingle + bounce SFX · boss theme late-game",
     },
     {
       id: "galaga",
@@ -71,7 +71,7 @@
       rarity: "epic",
       cost: RARITY_COST.epic,
       desc: "Blast waves of invaders.",
-      help: "← → move · Space / tap to shoot · +guns every 100 pts",
+      help: "← → move · Space / tap shoot · start fanfare + capture/rescue cues",
     },
     {
       id: "tetris",
@@ -79,7 +79,7 @@
       rarity: "legendary",
       cost: RARITY_COST.legendary,
       desc: "Classic stack-and-clear blocks.",
-      help: "← → move · ↑ rotate · ↓ soft drop · Space hard drop",
+      help: "← → move · ↑ rotate · ↓ soft · Space hard · Music A/B/C (Korobeiniki+)",
     },
     {
       id: "mario2d",
@@ -694,6 +694,346 @@
         attack: 0.01,
         release: 0.14,
       });
+    });
+  }
+
+  /* ---------- Chiptune engine (classic arcade / Game Boy style) ---------- */
+  const NOTE_FQ = {
+    R: 0,
+    C3: 130.81, Cs3: 138.59, D3: 146.83, Ds3: 155.56, E3: 164.81, F3: 174.61, Fs3: 185.0, G3: 196.0, Gs3: 207.65, A3: 220.0, As3: 233.08, B3: 246.94,
+    C4: 261.63, Cs4: 277.18, D4: 293.66, Ds4: 311.13, E4: 329.63, F4: 349.23, Fs4: 369.99, G4: 392.0, Gs4: 415.3, A4: 440.0, As4: 466.16, B4: 493.88,
+    C5: 523.25, Cs5: 554.37, D5: 587.33, Ds5: 622.25, E5: 659.25, F5: 698.46, Fs5: 739.99, G5: 783.99, Gs5: 830.61, A5: 880.0, As5: 932.33, B5: 987.77,
+    C6: 1046.5, D6: 1174.66, E6: 1318.51, F6: 1396.91, G6: 1567.98, A6: 1760.0,
+  };
+  const chipLoops = new Map();
+
+  function nfreq(n) {
+    if (typeof n === "number") return n;
+    if (!n || n === "R" || n === "r" || n === "-") return 0;
+    return NOTE_FQ[n] || 0;
+  }
+
+  function stopChipLoop(id) {
+    const loop = chipLoops.get(id);
+    if (!loop) return;
+    clearTimeout(loop.timer);
+    (loop.nodes || []).forEach((node) => {
+      try {
+        node.stop();
+      } catch (_) {}
+    });
+    chipLoops.delete(id);
+  }
+
+  function stopAllChipMusic() {
+    [...chipLoops.keys()].forEach(stopChipLoop);
+  }
+
+  /**
+   * Play a chiptune sequence.
+   * notes: [[noteName|freq|"R", beats], ...]
+   */
+  function playChipSequence(notes, opts = {}) {
+    const {
+      id = null,
+      loop = false,
+      gain = 0.038,
+      type = "square",
+      beat = 0.16,
+      bus = "music",
+      bass = false,
+    } = opts;
+    const ctx = getAudioCtx();
+    if (!ctx || !notes?.length) return 0;
+    if (id) stopChipLoop(id);
+
+    const out = bus === "music" ? musicOut() : soundOut();
+    const nodes = [];
+    let t = ctx.currentTime + 0.02;
+    const startT = t;
+
+    notes.forEach((row) => {
+      const note = Array.isArray(row) ? row[0] : row;
+      const beats = Array.isArray(row) ? row[1] ?? 1 : 1;
+      const dur = Math.max(0.04, beats * beat);
+      const freq = nfreq(note);
+      if (freq > 0) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.92);
+        osc.connect(g);
+        g.connect(out);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+        nodes.push(osc);
+        if (bass) {
+          const bOsc = ctx.createOscillator();
+          const bg = ctx.createGain();
+          bOsc.type = "triangle";
+          bOsc.frequency.setValueAtTime(freq / 2, t);
+          bg.gain.setValueAtTime(0.0001, t);
+          bg.gain.exponentialRampToValueAtTime(gain * 0.55, t + 0.015);
+          bg.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.9);
+          bOsc.connect(bg);
+          bg.connect(out);
+          bOsc.start(t);
+          bOsc.stop(t + dur + 0.02);
+          nodes.push(bOsc);
+        }
+      }
+      t += dur;
+    });
+
+    const totalMs = Math.max(80, (t - startT) * 1000);
+    if (id) {
+      const entry = { nodes, timer: 0 };
+      if (loop) {
+        entry.timer = setTimeout(() => {
+          if (chipLoops.get(id) === entry) playChipSequence(notes, opts);
+        }, totalMs - 30);
+      }
+      chipLoops.set(id, entry);
+    }
+    return totalMs;
+  }
+
+  function playNoiseBurst({ dur = 0.08, gain = 0.05, startFreq = 1200, endFreq = 200 } = {}) {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(startFreq, t0);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(soundOut());
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+
+  // Public-domain folk/classical arranged as 8-bit; arcade cues are synthesized homages
+  const SONGS = {
+    // Tetris Type A — Korobeiniki (19th-c. Russian folk, public domain)
+    tetrisA: [
+      ["E5", 1], ["B4", 0.5], ["C5", 0.5], ["D5", 1], ["C5", 0.5], ["B4", 0.5],
+      ["A4", 1], ["A4", 0.5], ["C5", 0.5], ["E5", 1], ["D5", 0.5], ["C5", 0.5],
+      ["B4", 1.5], ["C5", 0.5], ["D5", 1], ["E5", 1], ["C5", 1], ["A4", 1], ["A4", 2],
+      ["D5", 1.5], ["F5", 0.5], ["A5", 1], ["G5", 0.5], ["F5", 0.5],
+      ["E5", 1.5], ["C5", 0.5], ["E5", 1], ["D5", 0.5], ["C5", 0.5],
+      ["B4", 1.5], ["C5", 0.5], ["D5", 1], ["E5", 1], ["C5", 1], ["A4", 1], ["A4", 2],
+    ],
+    // Tetris Type B — upbeat original-style electronic loop (Game Boy vibe homage)
+    tetrisB: [
+      ["A4", 0.5], ["C5", 0.5], ["E5", 0.5], ["A5", 0.5], ["G5", 0.5], ["E5", 0.5], ["C5", 0.5], ["E5", 0.5],
+      ["F5", 0.5], ["A5", 0.5], ["C6", 0.5], ["A5", 0.5], ["G5", 0.5], ["E5", 0.5], ["D5", 0.5], ["E5", 0.5],
+      ["A4", 0.5], ["C5", 0.5], ["E5", 0.5], ["A5", 0.5], ["B5", 0.5], ["A5", 0.5], ["G5", 0.5], ["E5", 0.5],
+      ["F5", 1], ["E5", 1], ["D5", 1], ["C5", 1],
+    ],
+    // Tetris Type C — Bach French Suite No. 3 (public domain) 8-bit sketch
+    tetrisC: [
+      ["B4", 1], ["D5", 1], ["F5", 1], ["B5", 1], ["A5", 1], ["F5", 1], ["D5", 1], ["F5", 1],
+      ["G5", 1], ["F5", 0.5], ["E5", 0.5], ["D5", 1], ["C5", 1], ["B4", 1], ["A4", 1], ["B4", 2],
+      ["D5", 1], ["F5", 1], ["A5", 1], ["G5", 1], ["F5", 1], ["E5", 1], ["D5", 1], ["Cs5", 1],
+      ["D5", 2], ["A4", 1], ["D5", 1], ["F5", 2], ["E5", 1], ["D5", 1], ["Cs5", 2],
+    ],
+    // Galaga start fanfare (arcade-cue homage)
+    galagaStart: [
+      ["C5", 0.4], ["E5", 0.4], ["G5", 0.4], ["C6", 0.7], ["G5", 0.35], ["E5", 0.35], ["G5", 0.5], ["C6", 1.1],
+    ],
+    galagaChallenge: [
+      ["G5", 0.25], ["A5", 0.25], ["B5", 0.25], ["C6", 0.45], ["R", 0.15], ["E6", 0.55],
+    ],
+    galagaCapture: [
+      ["A5", 0.35], ["F5", 0.35], ["D5", 0.35], ["B4", 0.7],
+    ],
+    galagaRescue: [
+      ["B4", 0.25], ["D5", 0.25], ["Fs5", 0.25], ["A5", 0.45], ["Cs6", 0.7],
+    ],
+    // Arkanoid cues (Taito-style homage)
+    arkanoidStart: [
+      ["E4", 0.3], ["G4", 0.3], ["B4", 0.3], ["E5", 0.55], ["B4", 0.25], ["E5", 0.85],
+    ],
+    arkanoidBoss: [
+      ["E3", 0.5], ["E3", 0.5], ["G3", 0.5], ["E3", 0.5], ["A3", 0.5], ["G3", 0.5], ["E3", 0.5], ["D3", 0.5],
+      ["E3", 0.5], ["E3", 0.5], ["G3", 0.5], ["B3", 0.5], ["A3", 0.5], ["G3", 0.5], ["Fs3", 0.5], ["E3", 1],
+    ],
+  };
+
+  const GameSFX = {
+    tetrisMove() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      tone(ctx, { freq: 180, type: "square", start: ctx.currentTime, dur: 0.04, gain: 0.03, attack: 0.002, release: 0.03 });
+    },
+    tetrisRotate() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      tone(ctx, { freq: 420, type: "square", start: ctx.currentTime, dur: 0.05, gain: 0.035, attack: 0.002, release: 0.03 });
+      tone(ctx, { freq: 620, type: "square", start: ctx.currentTime + 0.03, dur: 0.05, gain: 0.03, attack: 0.002, release: 0.03 });
+    },
+    tetrisLock() {
+      playNoiseBurst({ dur: 0.07, gain: 0.04, startFreq: 220, endFreq: 70 });
+    },
+    tetrisLine(n = 1) {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      const base = [523.25, 659.25, 783.99, 1046.5];
+      for (let i = 0; i < Math.min(4, n + 1); i++) {
+        tone(ctx, {
+          freq: base[i],
+          type: "square",
+          start: ctx.currentTime + i * 0.05,
+          dur: 0.14,
+          gain: 0.045,
+          attack: 0.005,
+          release: 0.08,
+        });
+      }
+    },
+    tetrisGameOver() {
+      playChipSequence(
+        [["E5", 1], ["Cs5", 1], ["B4", 1], ["A4", 1.5], ["G4", 2]],
+        { beat: 0.14, gain: 0.045, type: "square", bus: "sound" }
+      );
+    },
+    galagaShoot() {
+      playNoiseBurst({ dur: 0.06, gain: 0.035, startFreq: 1400, endFreq: 480 });
+    },
+    galagaHit(elite) {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      tone(ctx, {
+        freq: elite ? 880 : 660,
+        type: "square",
+        start: ctx.currentTime,
+        dur: 0.07,
+        gain: 0.04,
+        attack: 0.002,
+        release: 0.04,
+      });
+      if (elite) {
+        tone(ctx, {
+          freq: 1175,
+          type: "triangle",
+          start: ctx.currentTime + 0.04,
+          dur: 0.1,
+          gain: 0.035,
+          attack: 0.002,
+          release: 0.06,
+        });
+      }
+    },
+    arkanoidBounce() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      tone(ctx, { freq: 520, type: "triangle", start: ctx.currentTime, dur: 0.05, gain: 0.04, attack: 0.002, release: 0.03 });
+    },
+    arkanoidBrick() {
+      playNoiseBurst({ dur: 0.08, gain: 0.045, startFreq: 900, endFreq: 160 });
+    },
+    arkanoidLose() {
+      playChipSequence(
+        [["E4", 1], ["C4", 1], ["A3", 1.5]],
+        { beat: 0.14, gain: 0.045, type: "square", bus: "sound" }
+      );
+    },
+    solitaireClick() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      tone(ctx, { freq: 980, type: "triangle", start: ctx.currentTime, dur: 0.035, gain: 0.04, attack: 0.001, release: 0.025 });
+    },
+    solitaireDeal() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      for (let i = 0; i < 5; i++) {
+        tone(ctx, {
+          freq: 700 + i * 40,
+          type: "triangle",
+          start: ctx.currentTime + i * 0.03,
+          dur: 0.04,
+          gain: 0.03,
+          attack: 0.001,
+          release: 0.02,
+        });
+      }
+    },
+    solitairePlace() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      tone(ctx, { freq: 620, type: "triangle", start: ctx.currentTime, dur: 0.05, gain: 0.035, attack: 0.002, release: 0.03 });
+      tone(ctx, { freq: 820, type: "sine", start: ctx.currentTime + 0.03, dur: 0.06, gain: 0.025, attack: 0.002, release: 0.04 });
+    },
+    solitaireShuffle() {
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      for (let i = 0; i < 8; i++) {
+        playNoiseBurst({
+          dur: 0.035,
+          gain: 0.028,
+          startFreq: 600 + Math.random() * 500,
+          endFreq: 120 + Math.random() * 80,
+        });
+        // stagger via tiny delaying tones
+        tone(ctx, {
+          freq: 200 + i * 30,
+          type: "square",
+          start: ctx.currentTime + i * 0.028,
+          dur: 0.02,
+          gain: 0.012,
+          attack: 0.001,
+          release: 0.015,
+        });
+      }
+    },
+    solitaireWin() {
+      // Cascading card celebration (no victory song — classic Solitaire style)
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      for (let i = 0; i < 12; i++) {
+        tone(ctx, {
+          freq: 400 + (i % 6) * 90,
+          type: "triangle",
+          start: ctx.currentTime + i * 0.055,
+          dur: 0.08,
+          gain: 0.035,
+          attack: 0.002,
+          release: 0.05,
+        });
+      }
+    },
+  };
+
+  function startTetrisMusic(track = "A") {
+    const map = { A: SONGS.tetrisA, B: SONGS.tetrisB, C: SONGS.tetrisC };
+    const song = map[track] || SONGS.tetrisA;
+    playChipSequence(song, {
+      id: "tetris-bgm",
+      loop: true,
+      beat: track === "B" ? 0.13 : track === "C" ? 0.18 : 0.15,
+      gain: 0.034,
+      type: "square",
+      bass: true,
+      bus: "music",
+    });
+  }
+
+  function startArkanoidBossMusic() {
+    playChipSequence(SONGS.arkanoidBoss, {
+      id: "arkanoid-boss",
+      loop: true,
+      beat: 0.14,
+      gain: 0.036,
+      type: "square",
+      bass: true,
+      bus: "music",
     });
   }
 
@@ -1448,6 +1788,7 @@
   function stopMiniGame() {
     cancelAnimationFrame(gameRaf);
     gameRaf = 0;
+    stopAllChipMusic();
     if (activeGame?.destroy) activeGame.destroy();
     activeGame = null;
   }
@@ -1769,6 +2110,7 @@
       completed = 0;
       setScore(0);
       setHelp("Spider: build same-suit K→A · move on any next-higher rank · stock deals to all columns");
+      GameSFX.solitaireShuffle();
 
       const deck = buildSpiderDeck(suits);
       tableau = Array.from({ length: 10 }, () => []);
@@ -1824,6 +2166,7 @@
         bumpScore(500);
         message = "All sequences cleared!";
         showToast("Spider clear!");
+        GameSFX.solitaireWin();
       }
     }
 
@@ -1845,6 +2188,7 @@
         message = "Fill empty columns before dealing";
         return;
       }
+      GameSFX.solitaireDeal();
       for (let c = 0; c < 10; c++) {
         const card = stock.pop();
         if (!card) break;
@@ -1934,6 +2278,7 @@
               bumpScore(2);
               selected = null;
               message = "";
+              GameSFX.solitairePlace();
             } else {
               message = "Invalid move";
               selected = null;
@@ -1969,6 +2314,7 @@
       selected = null;
       setScore(0);
       setHelp("FreeCell: build ↓ alternating colors · A→K by suit on foundations · use free cells");
+      GameSFX.solitaireShuffle();
 
       const deck = shuffle(
         SUITS_ALL.flatMap((s) => Array.from({ length: 13 }, (_, i) => makeCard(s, i + 1, true)))
@@ -2025,6 +2371,7 @@
         bumpScore(500);
         message = "FreeCell cleared!";
         showToast("FreeCell win!");
+        GameSFX.solitaireWin();
       }
     }
 
@@ -2252,6 +2599,7 @@
       stockPasses = 0;
       setScore(0);
       setHelp("Pyramid: pair uncovered cards that add to 13 · Kings remove alone · stock flips to waste");
+      GameSFX.solitaireShuffle();
 
       const deck = shuffle(
         SUITS_ALL.flatMap((s) => Array.from({ length: 13 }, (_, i) => makeCard(s, i + 1, true)))
@@ -2364,11 +2712,13 @@
       bumpScore(20);
       selected = null;
       message = "";
+      GameSFX.solitairePlace();
       if (pyramidCleared()) {
         won = true;
         bumpScore(300);
         message = "Pyramid cleared!";
         showToast("Pyramid win!");
+        GameSFX.solitaireWin();
       }
     }
 
@@ -2506,6 +2856,7 @@
         // allow menu after win
       }
       const p = canvasPos(e);
+      GameSFX.solitaireClick();
       if (screen === "menu") {
         for (const box of hitBoxes) {
           if (!hit(box, p)) continue;
@@ -2643,6 +2994,7 @@
         score += [0, 100, 300, 500, 800][cleared] || cleared * 200;
         setScore(score);
         dropMs = Math.max(120, 650 - score / 20);
+        GameSFX.tetrisLine(cleared);
       }
     }
 
@@ -2653,8 +3005,13 @@
 
     function lock() {
       merge();
+      GameSFX.tetrisLock();
       clearLines();
       spawn();
+      if (over) {
+        stopChipLoop("tetris-bgm");
+        GameSFX.tetrisGameOver();
+      }
     }
 
     function draw() {
@@ -2702,6 +3059,8 @@
       draw();
     }
 
+    let musicTrack = "A";
+
     return {
       id: "tetris",
       start() {
@@ -2712,14 +3071,25 @@
         over = false;
         bag = bagTypes();
         setScore(0);
+        // Cycle Type A (Korobeiniki) → B → C like Game Boy Tetris
+        const order = ["A", "B", "C"];
+        musicTrack = order[Math.floor(Math.random() * order.length)];
+        if (els.gameHelp) els.gameHelp.textContent = `← → move · ↑ rotate · ↓ soft · Space hard · Music ${musicTrack}`;
+        startTetrisMusic(musicTrack);
         spawn();
         last = performance.now();
         gameRaf = requestAnimationFrame(loop);
       },
       onKey(e) {
         if (over) return;
-        if (e.key === "ArrowLeft" && !collide(piece.x - 1, piece.y, piece.matrix)) piece.x -= 1;
-        if (e.key === "ArrowRight" && !collide(piece.x + 1, piece.y, piece.matrix)) piece.x += 1;
+        if (e.key === "ArrowLeft" && !collide(piece.x - 1, piece.y, piece.matrix)) {
+          piece.x -= 1;
+          GameSFX.tetrisMove();
+        }
+        if (e.key === "ArrowRight" && !collide(piece.x + 1, piece.y, piece.matrix)) {
+          piece.x += 1;
+          GameSFX.tetrisMove();
+        }
         if (e.key === "ArrowDown" && !collide(piece.x, piece.y + 1, piece.matrix)) {
           piece.y += 1;
           score += 1;
@@ -2727,11 +3097,16 @@
         }
         if (e.key === "ArrowUp") {
           const next = rotate(piece.matrix);
-          if (!collide(piece.x, piece.y, next)) piece.matrix = next;
+          if (!collide(piece.x, piece.y, next)) {
+            piece.matrix = next;
+            GameSFX.tetrisRotate();
+          }
         }
         if (e.key === " ") hardDrop();
       },
-      destroy() {},
+      destroy() {
+        stopChipLoop("tetris-bgm");
+      },
     };
   }
 
@@ -2786,6 +3161,7 @@
           vx: dx * 0.08,
         });
       });
+      GameSFX.galagaShoot();
     }
 
     function addScore(amount) {
@@ -2795,6 +3171,13 @@
       fireLevel = currentFireLevel();
       if (fireLevel > before) {
         showToast(`Fire power ×${shotCount()}!`);
+        // Challenging-stage style jingle on power ramp
+        playChipSequence(SONGS.galagaChallenge, {
+          beat: 0.12,
+          gain: 0.045,
+          type: "square",
+          bus: "sound",
+        });
       }
     }
 
@@ -2850,12 +3233,22 @@
       spawnTimer += dt;
       if (spawnTimer > Math.max(320, 700 - currentFireLevel() * 40)) {
         spawnTimer = 0;
+        const elite = Math.random() < 0.2;
         enemies.push({
           x: 30 + Math.random() * (W - 60),
           y: -20,
           vy: 0.08 + Math.random() * 0.08 + score * 0.0002,
-          elite: Math.random() < 0.2,
+          elite,
         });
+        if (elite) {
+          // Capture-beam cue when a tractor / elite ship appears
+          playChipSequence(SONGS.galagaCapture, {
+            beat: 0.12,
+            gain: 0.04,
+            type: "square",
+            bus: "sound",
+          });
+        }
       }
 
       bullets.forEach((b) => {
@@ -2882,6 +3275,15 @@
           if (Math.abs(b.x - en.x) < 14 && Math.abs(b.y - en.y) < 12) {
             bullets.splice(j, 1);
             enemies.splice(i, 1);
+            GameSFX.galagaHit(en.elite);
+            if (en.elite) {
+              playChipSequence(SONGS.galagaRescue, {
+                beat: 0.11,
+                gain: 0.042,
+                type: "square",
+                bus: "sound",
+              });
+            }
             addScore(en.elite ? 50 : 20);
             break;
           }
@@ -2894,6 +3296,13 @@
       id: "galaga",
       start() {
         reset();
+        playChipSequence(SONGS.galagaStart, {
+          beat: 0.14,
+          gain: 0.048,
+          type: "square",
+          bass: true,
+          bus: "music",
+        });
         gameRaf = requestAnimationFrame(loop);
       },
       onKey(e) {
@@ -3999,9 +4408,12 @@
       score = 0;
       over = false;
       won = false;
+      bossMusic = false;
       setScore(0);
       last = performance.now();
     }
+
+    let bossMusic = false;
 
     function draw() {
       gctx.fillStyle = "#050b14";
@@ -4043,9 +4455,19 @@
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
 
-      if (ball.x < ball.r || ball.x > W - ball.r) ball.vx *= -1;
-      if (ball.y < ball.r) ball.vy *= -1;
-      if (ball.y > H) over = true;
+      if (ball.x < ball.r || ball.x > W - ball.r) {
+        ball.vx *= -1;
+        GameSFX.arkanoidBounce();
+      }
+      if (ball.y < ball.r) {
+        ball.vy *= -1;
+        GameSFX.arkanoidBounce();
+      }
+      if (ball.y > H) {
+        over = true;
+        stopChipLoop("arkanoid-boss");
+        GameSFX.arkanoidLose();
+      }
 
       if (
         ball.y + ball.r >= paddle.y &&
@@ -4056,6 +4478,7 @@
       ) {
         ball.vy *= -1;
         ball.vx = ((ball.x - paddle.x) / (paddle.w / 2)) * 4;
+        GameSFX.arkanoidBounce();
       }
 
       bricks.forEach((b) => {
@@ -4070,10 +4493,27 @@
           ball.vy *= -1;
           score += 10;
           setScore(score);
+          GameSFX.arkanoidBrick();
         }
       });
 
-      if (bricks.every((b) => !b.alive)) won = true;
+      const alive = bricks.filter((b) => b.alive).length;
+      // Final-boss vibe when only a few bricks remain (Doh-style tension loop)
+      if (!bossMusic && alive > 0 && alive <= 6) {
+        bossMusic = true;
+        startArkanoidBossMusic();
+      }
+
+      if (bricks.every((b) => !b.alive)) {
+        won = true;
+        stopChipLoop("arkanoid-boss");
+        playChipSequence(SONGS.arkanoidStart, {
+          beat: 0.12,
+          gain: 0.045,
+          type: "square",
+          bus: "music",
+        });
+      }
       draw();
     }
 
@@ -4081,6 +4521,13 @@
       id: "arkanoid",
       start() {
         reset();
+        playChipSequence(SONGS.arkanoidStart, {
+          beat: 0.13,
+          gain: 0.048,
+          type: "square",
+          bass: true,
+          bus: "music",
+        });
         gameRaf = requestAnimationFrame(loop);
       },
       onPointer(e) {
@@ -4091,7 +4538,9 @@
         const rect = els.gameCanvas.getBoundingClientRect();
         paddle.x = ((e.clientX - rect.left) / rect.width) * W;
       },
-      destroy() {},
+      destroy() {
+        stopChipLoop("arkanoid-boss");
+      },
     };
   }
 
