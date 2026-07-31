@@ -4097,15 +4097,15 @@
 
   /* ---------- AI Mode (human chat + research + math) ---------- */
   const AI_SYSTEM = `You are a sharp multilingual study buddy inside "study with games".
-Your job: understand the user's question in ANY language, use the INTERNET RESULTS, and give a solid direct answer.
+Your job: understand ANY question in ANY language, use the INTERNET RESULTS, and give a SOLID direct answer every time.
 ALWAYS reply in the same language the user used (unless they ask for another language).
-Structure:
-1) One clear short answer in the first 1-2 sentences (actually answer what they asked).
-2) A fuller explanation (why/how as needed).
-3) Optional extra useful facts.
-4) Source links as markdown.
-Talk naturally. Don't dodge the question. Don't just paste random page blurbs.
-If results are weak, say what you found and what's still unclear.
+Hard rules for every answer:
+1) Actually answer the question in the first 1-2 sentences — no hedging, no "it depends" without then committing.
+2) Then explain why/how with clear reasoning a student can reuse.
+3) Add 2–4 useful extra facts when sources support them.
+4) Cite source links as markdown.
+5) If sources conflict or are thin, still give the best supported answer and note the uncertainty in one short line.
+Talk naturally. Don't dodge. Don't paste random blurbs. Don't refuse ordinary school questions.
 For math: show steps. End with 2-3 natural follow-up questions in the user's language.
 Be accurate. Don't take invigilated exams for them — teach instead.`;
 
@@ -4194,9 +4194,15 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     how: /\b(how|cómo|como|comment|wie|come|jak|nasıl|nasil|어떻게|どう|如何|как|bagaimana|như thế nào)\b/i,
     compare: /\b(vs\.?|versus|difference between|compare|diferencia|différence|unterschied|różnica|차이|違い|区别|разница)\b/i,
     define: /\b(what is|what's|whats|qué es|que es|qu'est-ce|o que é|was ist|che cos|co to|nedir|무엇|とは|什么是|что такое|apa itu|là gì)\b/i,
-    causes: /\b(cause|causes|causas|causes de|ursachen|przyczyny|원인|原因|причины)\b/i,
+    causes: /\b(cause|causes|caused|causing|causas|causes de|ursachen|przyczyny|원인|原因|причины)\b/i,
     examples: /\b(example|examples|ejemplo|exemple|beispiel|przykład|예시|例|例子|пример)\b/i,
+    yesno: /^\s*(is|are|was|were|do|does|did|can|could|should|will|would|has|have|had|es|está|son|est-ce|ist|sind|это|是否|인가)\b/i,
+    list: /\b(list|name (some|the|a few)|types of|kinds of|examples of|cuáles|quels|welche|какие|どんな|어떤|哪些)\b/i,
   };
+
+  const QUERY_STOP = new Set([
+    "the","a","an","and","or","of","to","in","on","for","with","that","this","from","into","about","please","just","really","very","some","any","my","your","me","you","i","we","they","it","is","are","was","were","be","been","do","does","did","can","could","would","should","will","what","who","why","how","when","where","which","tell","explain","define","describe","help","look","search","google","find","out","like","simple","simply","step","by",
+  ]);
 
   function buildStarfield(el, count, sizeMin, sizeMax, colorChance) {
     if (!el) return;
@@ -4310,9 +4316,15 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       INTENT_PATTERNS.how.test(t) ||
       INTENT_PATTERNS.define.test(t) ||
       INTENT_PATTERNS.compare.test(t) ||
-      /\b(explain|define|tell me about|search|look up|google|find out|homework|solve|equation|explique|explica|erklär|объясни|説明|解释)\b/i.test(
+      INTENT_PATTERNS.causes.test(t) ||
+      INTENT_PATTERNS.examples.test(t) ||
+      INTENT_PATTERNS.list.test(t) ||
+      INTENT_PATTERNS.yesno.test(t) ||
+      /\b(explain|define|tell me about|search|look up|google|find out|homework|solve|equation|calculate|what|why|how|who|when|where|explique|explica|erklär|объясни|説明|解释)\b/i.test(
         t
-      )
+      ) ||
+      // Any longer content question with a noun-ish topic → research, don't small-talk
+      (t.length > 18 && extractKeywords(t).length >= 2)
     ) {
       return false;
     }
@@ -4547,6 +4559,18 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return String(r);
   }
 
+  function extractKeywords(text) {
+    return [
+      ...new Set(
+        String(text || "")
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}\s\-']/gu, " ")
+          .split(/\s+/)
+          .filter((w) => w.length > 2 && !QUERY_STOP.has(w))
+      ),
+    ].slice(0, 8);
+  }
+
   function understandQuestion(question, prior) {
     const raw = question.trim();
     const lower = raw.toLowerCase();
@@ -4559,18 +4583,22 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     else if (INTENT_PATTERNS.where.test(raw)) intent = "where";
     else if (INTENT_PATTERNS.why.test(raw)) intent = "why";
     else if (INTENT_PATTERNS.compare.test(raw)) intent = "compare";
+    else if (INTENT_PATTERNS.causes.test(raw) || /\bwhat caused\b/i.test(raw)) intent = "causes";
     else if (INTENT_PATTERNS.define.test(raw)) intent = "define";
-    else if (INTENT_PATTERNS.causes.test(raw)) intent = "causes";
-    else if (INTENT_PATTERNS.examples.test(raw)) intent = "examples";
+    else if (INTENT_PATTERNS.examples.test(raw) || INTENT_PATTERNS.list.test(raw)) intent = "examples";
     else if (INTENT_PATTERNS.how.test(raw)) intent = "how";
+    else if (INTENT_PATTERNS.yesno.test(raw)) intent = "yesno";
     else if (trySolveMath(raw)) intent = "math";
 
     let topic = raw
       .replace(/^(hey|hi|yo|hola|bonjour|salut|ciao|hallo|olá|ola|merhaba|안녕|こんにちは|你好|привет|السلام|please|can you|could you|would you|okay|ok|um+|uh+|por favor|s'il te plaît|bitte)\s+/i, "")
       .replace(/^(explain|define|describe|summarize|tell me about|help me (with|understand)|look up|search for|google|find out|explique|explica|erklär|spiega|説明|解释|объясни)\s+/i, "")
-      .replace(/^(what is|what's|whats|what are|quién es|quien es|qué es|que es|qu'est-ce que|o que é|was ist|che cos'|co to jest|nedir|무엇|とは|什么是|что такое|apa itu|là gì|who is|who's|who was|who invented|who discovered|where is|where are|when did|when was|why is|why are|why does|why do|cómo|como|comment|how does|how do|how did|how to|how come|por qué|porque|pourquoi|warum|perché|왜|なぜ|为什么|почему)\s+/i, "")
+      .replace(/^(what caused|what causes|what is|what's|whats|what are|quién es|quien es|qué es|que es|qu'est-ce que|o que é|was ist|che cos'|co to jest|nedir|무엇|とは|什么是|что такое|apa itu|là gì|who is|who's|who was|who invented|who discovered|where is|where are|when did|when was|why is|why are|why does|why do|why did|cómo|como|comment|how does|how do|how did|how to|how come|por qué|porque|pourquoi|warum|perché|왜|なぜ|为什么|почему)\s+/i, "")
+      .replace(/^(is|are|was|were|do|does|did|can|could|should|will|would|has|have|had)\s+/i, "")
       .replace(/\b(like i'?m (tired|dumb|5|in \w+ grade)|in plain english|simply|simple|please|for me|step by step|en simple|simplemente|simplement)\b/gi, "")
       .replace(/[?!؟¡¿]+$/g, "")
+      .replace(/\b(work|works|working|mean|means|happening)\s*$/i, "")
+      .replace(/^(the|a|an)\s+/i, "")
       .replace(/\s+/g, " ")
       .trim();
 
@@ -4588,41 +4616,99 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       if (hint) topic = hint.trim();
     }
 
+    const keywords = extractKeywords(topic);
+    const keywordQuery = keywords.slice(0, 5).join(" ");
+
     const queries = new Set();
     queries.add(topic);
-    queries.add(raw.replace(/[?!؟]+$/g, "").slice(0, 100));
+    queries.add(raw.replace(/[?!؟]+$/g, "").slice(0, 120));
+    if (keywordQuery && keywordQuery !== topic.toLowerCase()) queries.add(keywordQuery);
 
-    // Language-aware query boosters (keep original phrasing + light English bridges for recall)
+    // Intent-specific angles so more question types hit solid sources
     if (intent === "who") {
-      queries.add(`${topic}`);
-      queries.add(`who ${topic}`);
-    } else if (intent === "why") {
-      queries.add(`${topic}`);
+      queries.add(`${topic} inventor`);
+      queries.add(`invention of ${topic}`);
+      queries.add(`${topic} biography`);
+    } else if (intent === "why" || intent === "causes") {
+      queries.add(`${topic} explanation`);
+      queries.add(`Causes of ${topic}`);
+      queries.add(`${topic} causes`);
+      queries.add(`why ${topic}`);
       if (/sky|ciel|cielo|himmel|하늘|空|небо/i.test(topic) && /blue|bleu|azul|blau|파란|青|син/i.test(raw + topic)) {
         queries.add("Rayleigh scattering");
       }
     } else if (intent === "how") {
+      queries.add(`how ${topic} works`);
       queries.add(`${topic}`);
+      queries.add(`${topic} process`);
+      queries.add(`${topic} steps`);
     } else if (intent === "compare") {
       const vs = raw.match(/difference between\s+(.+?)\s+and\s+(.+?)(?:\?|$)/i) ||
         raw.match(/diferencia entre\s+(.+?)\s+y\s+(.+?)(?:\?|$)/i) ||
         raw.match(/différence entre\s+(.+?)\s+et\s+(.+?)(?:\?|$)/i) ||
         raw.match(/(.+?)\s+(?:vs\.?|versus|compared to)\s+(.+?)(?:\?|$)/i);
       if (vs) {
-        queries.add(vs[1].trim());
-        queries.add(vs[2].replace(/[?!؟]+$/, "").trim());
+        const left = vs[1].trim();
+        const right = vs[2].replace(/[?!؟]+$/, "").trim();
+        topic = `${left} vs ${right}`;
+        queries.add(left);
+        queries.add(right);
+        queries.add(`${left} vs ${right}`);
       }
+    } else if (intent === "when") {
+      queries.add(`${topic} date`);
+      queries.add(`${topic} year`);
+      queries.add(`${topic} history`);
+    } else if (intent === "where") {
+      queries.add(`${topic} location`);
+      queries.add(`${topic} country`);
+    } else if (intent === "examples" || intent === "list") {
+      queries.add(`${topic} examples`);
+      queries.add(`types of ${topic}`);
+    } else if (intent === "yesno") {
+      queries.add(topic);
+      queries.add(`what is ${topic.split(/\s+/).slice(0, 4).join(" ")}`);
     } else if (intent === "define") {
+      queries.add(`what is ${topic}`);
+      queries.add(`${topic} definition`);
       queries.add(topic);
     } else {
+      queries.add(`what is ${topic}`);
+      queries.add(`${topic} overview`);
       queries.add(topic);
+    }
+
+    // Keep core noun chunks as extra search keys (helps messy homework wording)
+    if (keywords.length >= 2) {
+      queries.add(keywords.slice(0, 3).join(" "));
+      queries.add(keywords[keywords.length - 1]);
+    }
+
+    // High-value school-topic redirects so common questions always land on solid pages
+    const blob = `${raw} ${topic}`.toLowerCase();
+    if (/world war (i|1|one)\b/.test(blob) && /cause|start|begin|why|led/.test(blob)) {
+      queries.add("Causes of World War I");
+      queries.add("World War I");
+    }
+    if (/world war (ii|2|two)\b/.test(blob) && /cause|start|begin|why|led/.test(blob)) {
+      queries.add("Causes of World War II");
+      queries.add("World War II");
+    }
+    if (/sky/.test(blob) && /blue/.test(blob)) {
+      queries.add("Diffuse sky radiation");
+      queries.add("Rayleigh scattering");
+    }
+    if (/\b(mito|meiosis|photosynthesis|gravity|atom|cell|democracy|inflation|photosynth)\b/i.test(blob)) {
+      const hit = blob.match(/\b(mitosis|meiosis|photosynthesis|gravity|atom|cell \(biology\)|democracy|inflation)\b/i);
+      if (hit) queries.add(hit[1]);
     }
 
     return {
       intent,
       topic,
       lang,
-      queries: [...queries].filter((t) => t && t.length > 1).slice(0, 5),
+      keywords,
+      queries: [...queries].filter((t) => t && t.length > 1).slice(0, 10),
     };
   }
 
@@ -4657,9 +4743,13 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     if (len > 120) score += 2;
     if (len > 300) score += 1;
     // Soft penalty for obvious off-topic entertainment/studio pages when asking science
-    if (/\b(studio|television|film|song|album|video game)\b/i.test(hit.title || "") && /\b(why|how|science|sky|gravity|atom|cell)\b/i.test(question)) {
-      score -= 4;
+    if (/\b(studio|television|film|song|album|video game|disambiguation)\b/i.test(hit.title || "") && /\b(why|how|science|sky|gravity|atom|cell|war|cause)\b/i.test(question)) {
+      score -= 5;
     }
+    // Boost pages whose title clearly matches the academic topic
+    if (/\bcauses of\b/i.test(hit.title || "") && /\bcause|why|led\b/i.test(question)) score += 5;
+    if (/\b(rayleigh|diffuse sky)\b/i.test(hit.title || "") && /sky|blue/i.test(question)) score += 6;
+    if (/\bworld war i\b/i.test(hit.title || "") && /world war (i|1|one)\b/i.test(question) && !/world war ii/i.test(hit.title || "")) score += 4;
     return score;
   }
 
@@ -4679,7 +4769,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     const code = wikiLangCode(lang);
     try {
       const url =
-        `https://${code}.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&exchars=700&inprop=url&format=json&origin=*&gsrsearch=` +
+        `https://${code}.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=8&prop=extracts|info&exintro=1&explaintext=1&exchars=1200&inprop=url&format=json&origin=*&gsrsearch=` +
         encodeURIComponent(query);
       const res = await fetch(url);
       if (!res.ok) return [];
@@ -4697,6 +4787,45 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
           wikiLang: code,
           query,
         }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Exact / near-exact title lookup — strong first hit for solid answers */
+  async function wikiExactLookup(title, lang = "en") {
+    const code = wikiLangCode(lang);
+    const cleaned = String(title || "").trim();
+    if (!cleaned) return null;
+    const deep = await wikiDeepSummary(cleaned, code);
+    if (deep?.extract && deep.extract.length > 40) return deep;
+    // Try capitalized / title-case variants
+    const variants = [
+      cleaned.replace(/\b\w/g, (c) => c.toUpperCase()),
+      cleaned.charAt(0).toUpperCase() + cleaned.slice(1),
+    ];
+    for (const v of variants) {
+      if (v === cleaned) continue;
+      const hit = await wikiDeepSummary(v, code);
+      if (hit?.extract && hit.extract.length > 40) return hit;
+    }
+    return null;
+  }
+
+  /** Broader full-text Wikipedia search when title search is weak */
+  async function wikiFullTextSearch(query, lang = "en") {
+    const code = wikiLangCode(lang);
+    try {
+      const searchUrl =
+        `https://${code}.wikipedia.org/w/api.php?action=query&list=search&srlimit=5&srprop=snippet&format=json&origin=*&srsearch=` +
+        encodeURIComponent(query);
+      const res = await fetch(searchUrl);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const titles = (data.query?.search || []).map((s) => s.title).filter(Boolean);
+      if (!titles.length) return [];
+      const pages = await Promise.all(titles.slice(0, 4).map((t) => wikiDeepSummary(t, code)));
+      return pages.filter(Boolean).map((p) => ({ ...p, query }));
     } catch {
       return [];
     }
@@ -4969,12 +5098,19 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       const top = list[0];
       const score = top.score || 0;
       const len = (top.extract || top.text || "").length;
-      let c = Math.min(1, score / 14);
-      if (len >= 220) c += 0.15;
-      if (len >= 420) c += 0.1;
-      if (list.filter((h) => (h.score || 0) >= 5).length >= 2) c += 0.1;
-      if (top.source === "Wikipedia") c += 0.05;
+      let c = Math.min(1, score / 12);
+      if (len >= 180) c += 0.12;
+      if (len >= 350) c += 0.12;
+      if (len >= 600) c += 0.08;
+      if (list.filter((h) => (h.score || 0) >= 4).length >= 2) c += 0.1;
+      if (top.source === "Wikipedia") c += 0.06;
       if (top.wikiLang && top.wikiLang === wikiCode) c += 0.08;
+      // Title strongly matches topic → high confidence
+      const topicLow = understood.topic.toLowerCase();
+      const titleLow = (top.title || "").toLowerCase();
+      if (titleLow && (titleLow.includes(topicLow.slice(0, 24)) || topicLow.includes(titleLow.slice(0, 24)))) {
+        c += 0.12;
+      }
       // Intent-sensitive boosts (multilingual cues)
       if (
         understood.intent === "who" &&
@@ -4985,56 +5121,85 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         c += 0.08;
       }
       if (
-        understood.intent === "why" &&
+        (understood.intent === "why" || understood.intent === "causes") &&
         /\b(because|cause|due to|scattering|result|porque|parce que|weil|потому|때문에|ため)\b/i.test(
           top.extract || ""
         )
       ) {
-        c += 0.08;
+        c += 0.1;
       }
       return Math.max(0, Math.min(1, c));
     };
 
-    const hitWikiLang = (h) => h?.wikiLang || (String(h?.url || "").match(/https?:\/\/([a-z]{2,3})\.wikipedia\.org/i)?.[1]) || wikiCode;
+    const hitWikiLang = (h) =>
+      h?.wikiLang || (String(h?.url || "").match(/https?:\/\/([a-z]{2,3})\.wikipedia\.org/i)?.[1]) || wikiCode;
 
-    // ----- Phase 1: FAST pulse (cheap) -----
+    // ----- Phase 0: exact topic resolve (often the best solid answer) -----
+    report(`PulseSearch · resolving “${understood.topic.slice(0, 40)}”…`);
+    const exactJobs = [wikiExactLookup(understood.topic, wikiCode)];
+    if (wikiCode !== "en") exactJobs.push(wikiExactLookup(understood.topic, "en"));
+    if (understood.keywords?.length) {
+      exactJobs.push(wikiExactLookup(understood.keywords.slice(0, 3).join(" "), wikiCode));
+    }
+    const exactHits = (await Promise.all(exactJobs)).filter(Boolean);
+    absorb(
+      [],
+      exactHits.map((p) => ({ ...p, query: understood.topic }))
+    );
+
+    // ----- Phase 1: FAST pulse -----
     report(`PulseSearch · ${lang.name || wikiCode} scan…`);
-    const fastQueries = allQueries.slice(0, 2);
+    const fastQueries = allQueries.slice(0, 3);
     usedQueries.push(...fastQueries);
     const fastBags = await researchSubtopics(fastQueries, wikiCode);
     absorb(fastBags);
 
-    // One cheap Wikidata peek on the topic (tiny payload)
     const wdFast = await wikidataSearch(understood.topic, wikiCode);
     absorb([], wdFast);
 
     let confidence = confidenceOf(hits);
     let phase = 1;
 
-    // ----- Phase 2: DEEP pulse (only if needed) -----
-    if (confidence < 0.62) {
+    // Always deepen the best Wikipedia page so answers aren't thin blurbs
+    if (hits[0]?.source === "Wikipedia" && (hits[0].extract || "").length < 500) {
+      const deep = await wikiDeepSummary(hits[0].title, hitWikiLang(hits[0]));
+      if (deep) absorb([], [{ ...deep, query: understood.topic }]);
+      confidence = confidenceOf(hits);
+    }
+
+    // ----- Phase 2: DEEP pulse (if not yet solid) -----
+    if (confidence < 0.72) {
       phase = 2;
       report("Need more data — digging deeper…");
-      const deepQueries = allQueries.slice(2, 5).filter((q) => !usedQueries.includes(q));
-      // Keep original-language topic; add light English bridges for recall
+      const deepQueries = allQueries.slice(3, 8).filter((q) => !usedQueries.includes(q));
       const alt = [
-        understood.topic,
-        wikiCode !== "en" ? `what is ${understood.topic}` : `what is ${understood.topic}`,
-        understood.intent === "why" ? `why ${understood.topic}` : null,
-        understood.intent === "who" ? `who ${understood.topic}` : null,
+        `what is ${understood.topic}`,
+        understood.intent === "why" || understood.intent === "causes" ? `why ${understood.topic}` : null,
+        understood.intent === "who" ? `${understood.topic} inventor` : null,
+        understood.intent === "how" ? `how ${understood.topic} works` : null,
+        (understood.keywords || []).slice(0, 4).join(" "),
       ].filter(Boolean);
       for (const q of alt) {
         if (!usedQueries.includes(q)) deepQueries.push(q);
       }
-      const next = [...new Set(deepQueries)].slice(0, 3);
+      const next = [...new Set(deepQueries)].slice(0, 4);
       usedQueries.push(...next);
       if (next.length) {
         const deepBags = await researchSubtopics(next, wikiCode);
         absorb(deepBags);
       }
 
-      // Deepen top 2 Wikipedia pages (more precise extracts)
-      const topWiki = hits.filter((h) => h.source === "Wikipedia").slice(0, 2);
+      // Full-text Wikipedia pass for messy homework wording
+      const ftQueries = [understood.topic, (understood.keywords || []).slice(0, 4).join(" ")].filter(Boolean);
+      const ftHits = (
+        await Promise.all(ftQueries.map((q) => wikiFullTextSearch(q, wikiCode)))
+      ).flat();
+      absorb(
+        [],
+        ftHits.map((p) => ({ ...p, query: understood.topic }))
+      );
+
+      const topWiki = hits.filter((h) => h.source === "Wikipedia").slice(0, 3);
       const deepPages = await Promise.all(
         topWiki.map((h) => wikiDeepSummary(h.title, hitWikiLang(h)))
       );
@@ -5045,15 +5210,15 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       confidence = confidenceOf(hits);
     }
 
-    // ----- Phase 3: PRECISE pulse (only if still weak) -----
-    if (confidence < 0.5) {
+    // ----- Phase 3: PRECISE pulse (still weak OR no strong wiki) -----
+    const topWeak = !hits.length || (hits[0].score || 0) < 6 || confidence < 0.55;
+    if (topWeak) {
       phase = 3;
       report("Gathering extra sources for a more precise answer…");
       const seed = hits.find((h) => h.source === "Wikipedia") || hits[0];
       if (seed?.title) {
         const seedLang = hitWikiLang(seed);
-        const related = await wikiRelatedTitles(seed.title, 5, seedLang);
-        // Score related titles against the question; only fetch the best 2
+        const related = await wikiRelatedTitles(seed.title, 8, seedLang);
         const rankedRelated = related
           .map((title) => ({
             title,
@@ -5064,7 +5229,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
             ),
           }))
           .sort((a, b) => b.score - a.score)
-          .slice(0, 2);
+          .slice(0, 3);
 
         const relatedPages = await Promise.all(
           rankedRelated.map(async (r) => {
@@ -5083,24 +5248,34 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
             query: understood.topic,
           }))
         );
-
-        // One more Wikidata pass with an alternate query
-        const wdDeep = await wikidataSearch(allQueries[0] || understood.topic, wikiCode);
-        absorb([], wdDeep);
       }
-      confidence = confidenceOf(hits);
-    } else if (hits[0]?.source === "Wikipedia" && (hits[0].extract || "").length < 280) {
-      // Small precision boost: deepen best page even on medium confidence
-      report("Refining the top source…");
-      const deep = await wikiDeepSummary(hits[0].title, hitWikiLang(hits[0]));
-      if (deep) absorb([], [{ ...deep, query: understood.topic }]);
+
+      // Keyword last resort — search each strong keyword
+      const kw = (understood.keywords || []).slice(0, 3);
+      if (kw.length) {
+        const kwBags = await researchSubtopics(kw, wikiCode);
+        absorb(kwBags);
+        usedQueries.push(...kw.filter((k) => !usedQueries.includes(k)));
+      }
+
+      // English full-text rescue when non-English scan is thin
+      if (wikiCode !== "en" && confidenceOf(hits) < 0.55) {
+        const enFt = await wikiFullTextSearch(understood.topic, "en");
+        absorb(
+          [],
+          enFt.map((p) => ({ ...p, query: understood.topic }))
+        );
+      }
+
+      const wdDeep = await wikidataSearch(allQueries[0] || understood.topic, wikiCode);
+      absorb([], wdDeep);
       confidence = confidenceOf(hits);
     }
 
     report(
-      confidence >= 0.62
+      confidence >= 0.65
         ? "Sources look solid — writing your answer…"
-        : "Writing the best answer from what I found…"
+        : "Writing the strongest answer from everything I found…"
     );
 
     return {
@@ -5510,20 +5685,73 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return ANSWER_I18N[langCode] || ANSWER_I18N.en;
   }
 
-  function craftDirectAnswer(intent, topic, bestHit, langCode = "en") {
+  function splitSentences(text) {
+    return String(text || "")
+      .replace(/\s+/g, " ")
+      .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+      ?.map((s) => s.trim())
+      .filter((s) => s.length > 25) || [];
+  }
+
+  function pickAnswerSentences(intent, question, hits, max = 4) {
+    const qWords = extractKeywords(`${question}`);
+    const scored = [];
+    const seen = new Set();
+    for (const hit of hits.slice(0, 6)) {
+      const sents = splitSentences(hit.extract || hit.text || "");
+      for (const s of sents) {
+        const key = s.slice(0, 80).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        let score = 0;
+        const low = s.toLowerCase();
+        qWords.forEach((w) => {
+          if (low.includes(w)) score += 2;
+        });
+        if (intent === "why" || intent === "causes") {
+          if (/\b(because|cause|due to|result|leads? to|scattering|porqu|weil|потому|때문에|ため)\b/i.test(s)) score += 4;
+        }
+        if (intent === "who") {
+          if (/\b(invent|discover|born|scientist|author|founder|is a|was a)\b/i.test(s)) score += 3;
+        }
+        if (intent === "when") {
+          if (/\b(1[0-9]{3}|20[0-9]{2}|January|February|March|April|May|June|July|August|September|October|November|December)\b/i.test(s)) score += 3;
+        }
+        if (intent === "how") {
+          if (/\b(by|through|process|steps?|works?|using|via)\b/i.test(s)) score += 2;
+        }
+        if (intent === "yesno") {
+          if (/\b(is|are|was|were|not|yes|no)\b/i.test(s)) score += 1;
+        }
+        // Prefer earlier sentences from top hits
+        score += Math.max(0, 3 - hits.indexOf(hit));
+        scored.push({ s, score, title: hit.title });
+      }
+    }
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, max)
+      .map((x) => x.s);
+  }
+
+  function craftDirectAnswer(intent, topic, bestHit, langCode = "en", supportHits = []) {
     const pack = answerPack(langCode);
     const extract = humanizeFact(bestHit?.extract || bestHit?.text || "");
     const title = bestHit?.title || topic;
     if (!extract) return "";
-    const lead = firstSentences(extract, 2);
-    const rest = extract.length > lead.length + 20 ? extract : "";
+
+    const allHits = [bestHit, ...supportHits].filter(Boolean);
+    const picked = pickAnswerSentences(intent, topic, allHits, intent === "compare" ? 5 : 4);
+    const lead = picked[0] || firstSentences(extract, 2);
+    const more = picked.slice(1).join(" ");
+    const rest = more || (extract.length > lead.length + 20 ? firstSentences(extract.replace(lead, "").trim(), 2) : "");
 
     if (intent === "who") {
       return `**${pack.short}:** ${lead}\n\n${rest ? `**${pack.more}:** ${rest}\n\n` : ""}${pack.sourceTopic}: **${title}**.`;
     }
     if (intent === "when") {
-      const year = extract.match(
-        /\b((?:January|February|March|April|May|June|July|August|September|October|November|December|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+\d{1,2},?\s*\d{3,4}|\d{3,4})\b/i
+      const year = `${lead} ${rest} ${extract}`.match(
+        /\b((?:January|February|March|April|May|June|July|August|September|October|November|December|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septembre|octobre|novembre|décembre)\s+\d{1,2},?\s*\d{3,4}|\b(?:1[0-9]{3}|20[0-2][0-9])\b)/i
       );
       return year
         ? `**${pack.short}:** **${year[1].trim()}**.\n\n${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`
@@ -5537,7 +5765,13 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       return `**${label}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "compare") {
-      return `**${pack.diff}:**\n\n${extract}`;
+      return `**${pack.diff}:**\n\n${lead}${rest ? `\n\n${rest}` : `\n\n${extract}`}`;
+    }
+    if (intent === "examples") {
+      return `**${pack.answer}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
+    }
+    if (intent === "yesno") {
+      return `**${pack.short}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "define") {
       return `**${title}:** ${lead}${rest ? `\n\n${rest}` : ""}`;
@@ -5551,10 +5785,21 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     if (info.lang) aiLastLang = info.lang;
     const pack = answerPack(langCode);
     const hits = rankHits(webHits.length ? webHits : collectWebHits(research), question, info.topic)
-      .filter((h) => (h.score == null ? true : h.score > 0) || (h.extract || h.text));
-    const best = hits[0];
+      .filter((h) => {
+        const text = h.extract || h.text || "";
+        if (!text) return false;
+        // Keep any reasonably useful hit, even if score is low — never throw away the only answer
+        return h.score == null || h.score > 0 || text.length > 40;
+      });
+    // If ranking wiped everything, fall back to raw hits with text
+    const usable =
+      hits.length > 0
+        ? hits
+        : (webHits.length ? webHits : collectWebHits(research)).filter((h) => h.extract || h.text);
+    const best = usable[0];
     const overview = best?.extract || best?.text || "";
     const nameBit = aiUserName ? `, ${aiUserName}` : "";
+    const support = usable.slice(1, 5);
 
     let out = "";
     if (mathBlock) {
@@ -5562,29 +5807,44 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       if (overview) out += `\n${pack.related}: ${firstSentences(overview, 2)}\n`;
     } else if (overview) {
       out += pack.lead(nameBit, info.topic, info.intent);
-      out += `${craftDirectAnswer(info.intent, info.topic, best, langCode)}\n`;
+      out += `${craftDirectAnswer(info.intent, info.topic, best, langCode, support)}\n`;
     } else {
+      // Absolute last resort — still give a useful, honest solid attempt
       out += pack.noMatch(info.topic, nameBit);
+      out +=
+        langCode === "es"
+          ? `\nMientras tanto: reformula con el **concepto principal** + 1 detalle (fecha, persona, o “por qué”). Ejemplo: “fotosíntesis proceso” o “quién inventó el teléfono”.\n`
+          : langCode === "fr"
+            ? `\nEn attendant : reformule avec le **concept clé** + 1 détail. Exemple : “photosynthèse processus” ou “qui a inventé le téléphone”.\n`
+            : `\nMeanwhile tip: rephrase with the **main concept** + one detail (date, person, or “why”). Example: “photosynthesis process” or “who invented the telephone”.\n`;
     }
 
-    // Supporting points from other good hits
-    const support = hits.slice(1, 4).filter((h) => (h.score == null || h.score >= 3));
-    if (support.length && overview) {
-      out += `\n**${pack.also}:**\n`;
-      support.forEach((h) => {
-        const blurb = firstSentences(humanizeFact(h.extract || h.text || ""), 1);
-        if (!blurb) return;
-        out += `- **${h.title}**: ${blurb}\n`;
-      });
+    // Key facts distilled from multiple sources (solid multi-angle answer)
+    if (overview && support.length) {
+      const keyFacts = pickAnswerSentences(info.intent, question, usable, 5).slice(1, 4);
+      const uniqueFacts = keyFacts.filter((f) => !overview.slice(0, 120).includes(f.slice(0, 40)));
+      if (uniqueFacts.length) {
+        out += `\n**${pack.also}:**\n`;
+        uniqueFacts.forEach((f) => {
+          out += `- ${f}\n`;
+        });
+      } else {
+        out += `\n**${pack.also}:**\n`;
+        support.slice(0, 3).forEach((h) => {
+          const blurb = firstSentences(humanizeFact(h.extract || h.text || ""), 1);
+          if (!blurb) return;
+          out += `- **${h.title}**: ${blurb}\n`;
+        });
+      }
     }
 
     if (/study plan|how should i study|revise|review for|stressed about a .*test|plan de estudio|plan d'étude|lernplan|план учёбы|勉強計画|공부 계획|学习计划/i.test(question)) {
       out += `\n**${pack.planTitle}:** ${pack.plan}\n`;
     }
 
-    if (hits.length) {
+    if (usable.length) {
       out += `\n**${pack.sources}:**\n`;
-      hits.slice(0, 5).forEach((h, i) => {
+      usable.slice(0, 6).forEach((h, i) => {
         out += `${i + 1}. [${h.title}](${h.url})\n`;
       });
     }
@@ -5596,7 +5856,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return {
       content: out.trim(),
       followups: extractFollowups(out, question, research),
-      sources: hits.slice(0, 5),
+      sources: usable.slice(0, 6),
     };
   }
 
@@ -5625,7 +5885,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     const nameLine = aiUserName ? `Their name is ${aiUserName}. ` : "";
     const langLine = `User language detected: ${lang.name} (${lang.code}). ALWAYS reply in ${lang.name} unless they explicitly ask for another language.`;
     const userPayload = brief
-      ? `QUESTION (${lang.name}): ${question}\n\nINTERNET RESULTS:\n${brief}\n\nWrite a solid answer in ${lang.name} that directly addresses the question. Lead with the answer, then explain. Use the results. Include source links. Sound human.`
+      ? `QUESTION (${lang.name}): ${question}\n\nINTERNET RESULTS:\n${brief}\n\nWrite a SOLID answer in ${lang.name}. Requirements: (1) first sentence answers the question directly, (2) then a clear explanation, (3) a few useful extras if supported, (4) source links. Never dodge. If results are incomplete, still give the strongest answer you can from them.`
       : `QUESTION (${lang.name}): ${question}\n\nReply in ${lang.name} like a real person. Keep the vibe natural.`;
     const messages = [
       { role: "system", content: `${AI_SYSTEM}\n${nameLine}${langLine}` },
