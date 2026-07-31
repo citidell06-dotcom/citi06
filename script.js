@@ -4545,16 +4545,17 @@
 
   /* ---------- AI Mode (human chat + research + math) ---------- */
   const AI_SYSTEM = `You are a sharp multilingual study buddy inside "study with games".
-Your job: understand ANY question in ANY language, use the INTERNET RESULTS, and give a SOLID direct answer every time.
+Your job: answer the EXACT question the user asked — not a nearby topic, not a generic encyclopedia dump.
 ALWAYS reply in the same language the user used (unless they ask for another language).
 Hard rules for every answer:
-1) Actually answer the question in the first 1-2 sentences — no hedging, no "it depends" without then committing.
-2) Then explain why/how with clear reasoning a student can reuse.
-3) Add 2–4 useful extra facts when sources support them.
-4) Cite source links as markdown.
-5) If sources conflict or are thin, still give the best supported answer and note the uncertainty in one short line.
-Talk naturally. Don't dodge. Don't paste random blurbs. Don't refuse ordinary school questions.
-For math: show steps. End with 2-3 natural follow-up questions in the user's language.
+1) First 1–2 sentences must directly answer THAT question (who/what/why/how/when/where/yes-no as asked).
+2) Only use internet results that help answer this question; ignore off-topic pages.
+3) Then briefly explain, staying on the asked question.
+4) Optional 1–3 extra facts ONLY if they still relate to the question.
+5) Cite source links as markdown.
+6) If results don't fully cover the question, say what you can answer and what is still unclear — do not switch topics.
+Talk naturally. Don't dodge. Don't paste random blurbs.
+For math: show steps. End with 2-3 follow-up questions about the same topic.
 Be accurate. Don't take invigilated exams for them — teach instead.`;
 
   let aiUserName = "";
@@ -5957,175 +5958,166 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
 
   const ANSWER_I18N = {
     en: {
-      short: "Short answer",
-      more: "More detail",
-      sourceTopic: "Source topic",
-      how: "How it works",
-      causes: "Main causes",
-      diff: "Here's the difference",
+      short: "Answer",
+      more: "Why / more detail",
+      sourceTopic: "From",
+      how: "How",
+      causes: "Causes",
+      diff: "Difference",
       answer: "Answer",
-      lead: (n, topic, intent) =>
-        `Okay${n} — I understood your question as asking about **${topic}** (${intent}). I searched the internet and here's a solid answer:\n\n`,
+      lead: (n) => `Okay${n} — answering your question:\n\n`,
       noMatch: (topic, n) =>
-        `I searched the web for **${topic}**${n}, but didn't get a strong match. Try rephrasing with the main topic words.\n`,
-      related: "Related context from the web",
-      also: "Also useful",
+        `I couldn't find sources that clearly answer that${n}. Try asking again with the main words from your question (topic: **${topic}**).\n`,
+      related: "Related to your question",
+      also: "Still on your question",
       planTitle: "Quick study plan",
       plan: "20 min read + write 5 facts from memory, 15 min explain out loud, 15 min practice, 10 min review mistakes.",
-      sources: "Sources I used",
-      fuzzy: `\nIf any part is still fuzzy, ask me like: “explain that simpler” or “give an example.”\n`,
+      sources: "Sources for this answer",
+      fuzzy: `\nWant it simpler, or an example tied to this same question?\n`,
     },
     es: {
-      short: "Respuesta corta",
-      more: "Más detalle",
-      sourceTopic: "Tema fuente",
-      how: "Cómo funciona",
-      causes: "Causas principales",
-      diff: "Aquí está la diferencia",
+      short: "Respuesta",
+      more: "Por qué / más detalle",
+      sourceTopic: "De",
+      how: "Cómo",
+      causes: "Causas",
+      diff: "Diferencia",
       answer: "Respuesta",
-      lead: (n, topic, intent) =>
-        `Vale${n} — entendí que preguntas sobre **${topic}** (${intent}). Busqué en internet y aquí va una respuesta sólida:\n\n`,
+      lead: (n) => `Vale${n} — respondiendo a tu pregunta:\n\n`,
       noMatch: (topic, n) =>
-        `Busqué **${topic}**${n} en la web, pero no encontré una coincidencia fuerte. Prueba a reformular con las palabras clave del tema.\n`,
-      related: "Contexto relacionado de la web",
-      also: "También útil",
+        `No encontré fuentes que respondan claro a eso${n}. Prueba con las palabras clave de tu pregunta (tema: **${topic}**).\n`,
+      related: "Relacionado con tu pregunta",
+      also: "Siguiendo tu pregunta",
       planTitle: "Plan de estudio rápido",
       plan: "20 min leer + escribir 5 datos de memoria, 15 min explicar en voz alta, 15 min practicar, 10 min revisar errores.",
-      sources: "Fuentes que usé",
-      fuzzy: `\nSi algo sigue confuso, dime: “explícalo más simple” o “dame un ejemplo.”\n`,
+      sources: "Fuentes de esta respuesta",
+      fuzzy: `\n¿Lo quieres más simple, o un ejemplo de esta misma pregunta?\n`,
     },
     fr: {
-      short: "Réponse courte",
-      more: "Plus de détails",
-      sourceTopic: "Sujet source",
-      how: "Comment ça marche",
-      causes: "Causes principales",
-      diff: "Voici la différence",
+      short: "Réponse",
+      more: "Pourquoi / détails",
+      sourceTopic: "Source",
+      how: "Comment",
+      causes: "Causes",
+      diff: "Différence",
       answer: "Réponse",
-      lead: (n, topic, intent) =>
-        `Ok${n} — j'ai compris que tu demandes **${topic}** (${intent}). J'ai cherché sur internet, voici une réponse solide :\n\n`,
+      lead: (n) => `Ok${n} — réponse à ta question :\n\n`,
       noMatch: (topic, n) =>
-        `J'ai cherché **${topic}**${n} sur le web, sans fort résultat. Reformule avec les mots-clés du sujet.\n`,
-      related: "Contexte lié du web",
-      also: "Aussi utile",
+        `Je n'ai pas trouvé de sources qui répondent clairement${n}. Reformule avec les mots clés (sujet : **${topic}**).\n`,
+      related: "Lié à ta question",
+      also: "Toujours sur ta question",
       planTitle: "Plan d'étude rapide",
       plan: "20 min lire + 5 faits de mémoire, 15 min expliquer à voix haute, 15 min pratiquer, 10 min revoir les erreurs.",
-      sources: "Sources utilisées",
-      fuzzy: `\nSi c'est encore flou, dis : « explique plus simplement » ou « donne un exemple ».\n`,
+      sources: "Sources pour cette réponse",
+      fuzzy: `\nTu veux plus simple, ou un exemple sur cette même question ?\n`,
     },
     de: {
-      short: "Kurze Antwort",
-      more: "Mehr Details",
-      sourceTopic: "Quellthema",
-      how: "So funktioniert's",
-      causes: "Hauptursachen",
-      diff: "Hier ist der Unterschied",
+      short: "Antwort",
+      more: "Warum / mehr Detail",
+      sourceTopic: "Aus",
+      how: "Wie",
+      causes: "Ursachen",
+      diff: "Unterschied",
       answer: "Antwort",
-      lead: (n, topic, intent) =>
-        `Okay${n} — ich hab deine Frage zu **${topic}** verstanden (${intent}). Ich hab online gesucht, hier eine solide Antwort:\n\n`,
+      lead: (n) => `Okay${n} — Antwort auf deine Frage:\n\n`,
       noMatch: (topic, n) =>
-        `Ich hab **${topic}**${n} gesucht, aber keinen starken Treffer. Formuliere mit den Kernwörtern neu.\n`,
-      related: "Passender Web-Kontext",
-      also: "Auch nützlich",
+        `Keine klar passenden Quellen für genau diese Frage${n}. Frag nochmal mit den Kernwörtern (Thema: **${topic}**).\n`,
+      related: "Zur Frage passend",
+      also: "Noch zur Frage",
       planTitle: "Schneller Lernplan",
       plan: "20 Min lesen + 5 Fakten aus dem Gedächtnis, 15 Min laut erklären, 15 Min üben, 10 Min Fehler checken.",
-      sources: "Quellen",
-      fuzzy: `\nWenn etwas unklar bleibt: „einfacher erklären“ oder „Beispiel bitte.“\n`,
+      sources: "Quellen für diese Antwort",
+      fuzzy: `\nEinfacher erklären, oder ein Beispiel zu genau dieser Frage?\n`,
     },
     pt: {
-      short: "Resposta curta",
-      more: "Mais detalhes",
-      sourceTopic: "Tópico fonte",
-      how: "Como funciona",
-      causes: "Causas principais",
-      diff: "Aqui está a diferença",
+      short: "Resposta",
+      more: "Por quê / mais detalhe",
+      sourceTopic: "De",
+      how: "Como",
+      causes: "Causas",
+      diff: "Diferença",
       answer: "Resposta",
-      lead: (n, topic, intent) =>
-        `Beleza${n} — entendi que você pergunta sobre **${topic}** (${intent}). Pesquisei na internet e aqui vai uma resposta sólida:\n\n`,
+      lead: (n) => `Beleza${n} — respondendo à sua pergunta:\n\n`,
       noMatch: (topic, n) =>
-        `Procurei **${topic}**${n} na web, mas não achei uma combinação forte. Reformule com as palavras-chave.\n`,
-      related: "Contexto relacionado da web",
-      also: "Também útil",
+        `Não achei fontes que respondam isso com clareza${n}. Tente de novo com as palavras-chave (tema: **${topic}**).\n`,
+      related: "Relacionado à sua pergunta",
+      also: "Ainda na sua pergunta",
       planTitle: "Plano de estudo rápido",
       plan: "20 min ler + 5 fatos de memória, 15 min explicar em voz alta, 15 min praticar, 10 min revisar erros.",
-      sources: "Fontes que usei",
-      fuzzy: `\nSe ainda estiver confuso, diga: “explica mais simples” ou “me dá um exemplo.”\n`,
+      sources: "Fontes desta resposta",
+      fuzzy: `\nQuer mais simples, ou um exemplo desta mesma pergunta?\n`,
     },
     ru: {
-      short: "Короткий ответ",
-      more: "Подробнее",
-      sourceTopic: "Тема источника",
-      how: "Как это работает",
-      causes: "Основные причины",
-      diff: "Вот в чём разница",
+      short: "Ответ",
+      more: "Почему / подробнее",
+      sourceTopic: "Из",
+      how: "Как",
+      causes: "Причины",
+      diff: "Разница",
       answer: "Ответ",
-      lead: (n, topic, intent) =>
-        `Окей${n} — я понял(а), что вопрос про **${topic}** (${intent}). Поискал(а) в интернете, вот чёткий ответ:\n\n`,
+      lead: (n) => `Окей${n} — отвечаю на твой вопрос:\n\n`,
       noMatch: (topic, n) =>
-        `Искал(а) **${topic}**${n} в сети, но сильного совпадения нет. Переформулируй ключевыми словами темы.\n`,
-      related: "Связанный контекст из сети",
-      also: "Ещё полезно",
+        `Не нашёл источников, которые ясно отвечают именно на это${n}. Переформулируй ключевыми словами (тема: **${topic}**).\n`,
+      related: "По твоему вопросу",
+      also: "Всё ещё по вопросу",
       planTitle: "Быстрый план учёбы",
       plan: "20 мин читать + 5 фактов по памяти, 15 мин объяснить вслух, 15 мин практика, 10 мин ошибки.",
-      sources: "Источники",
-      fuzzy: `\nЕсли что-то мутно — скажи: «объясни проще» или «дай пример».\n`,
+      sources: "Источники для этого ответа",
+      fuzzy: `\nПроще объяснить или пример по этому же вопросу?\n`,
     },
     ja: {
-      short: "短い答え",
-      more: "もう少し詳しく",
-      sourceTopic: "出典トピック",
+      short: "答え",
+      more: "理由 / もう少し",
+      sourceTopic: "出典",
       how: "仕組み",
-      causes: "主な原因",
-      diff: "違いを整理すると",
+      causes: "原因",
+      diff: "違い",
       answer: "答え",
-      lead: (n, topic, intent) =>
-        `オーケー${n} — 質問は **${topic}**（${intent}）だと理解したよ。ネットで調べた、しっかりした答え：\n\n`,
+      lead: (n) => `オーケー${n} — 質問への答え：\n\n`,
       noMatch: (topic, n) =>
-        `**${topic}**${n} を探したけど強い一致がなかった。キーワードで言い換えてみて。\n`,
-      related: "ウェブの関連情報",
-      also: "ついでに役立つこと",
+        `その質問にまっすぐ答える情報が見つからなかった${n}。キーワードで聞き直して（話題: **${topic}**）。\n`,
+      related: "質問に関係ある情報",
+      also: "同じ質問について",
       planTitle: "すぐ使える勉強プラン",
       plan: "20分読む＋記憶から5事実、15分口頭説明、15分練習、10分見直し。",
-      sources: "使った出典",
-      fuzzy: `\nまだ曖昧なら「もっと簡単に」や「例をちょうだい」と聞いて。\n`,
+      sources: "この答えの出典",
+      fuzzy: `\nもっと簡単に？それとも同じ質問の例？\n`,
     },
     ko: {
-      short: "짧은 답",
-      more: "더 자세히",
-      sourceTopic: "출처 주제",
-      how: "작동 방식",
-      causes: "주요 원인",
-      diff: "차이는 이렇다",
+      short: "답",
+      more: "이유 / 더 자세히",
+      sourceTopic: "출처",
+      how: "어떻게",
+      causes: "원인",
+      diff: "차이",
       answer: "답",
-      lead: (n, topic, intent) =>
-        `오케이${n} — 질문은 **${topic}**(${intent})로 이해했어. 인터넷에서 찾아본 확실한 답:\n\n`,
+      lead: (n) => `오케이${n} — 질문에 답하면:\n\n`,
       noMatch: (topic, n) =>
-        `**${topic}**${n}을(를) 찾아봤지만 강한 일치가 없었어. 핵심 단어로 다시 물어봐.\n`,
-      related: "웹의 관련 맥락",
-      also: "같이 보면 좋은 것",
+        `그 질문에 바로 답할 자료를 못 찾았어${n}. 핵심 단어로 다시 물어봐 (주제: **${topic}**).\n`,
+      related: "질문과 관련된 내용",
+      also: "같은 질문 이어서",
       planTitle: "빠른 공부 계획",
       plan: "20분 읽기 + 기억으로 사실 5개, 15분 말해보기, 15분 연습, 10분 오답 정리.",
-      sources: "사용한 출처",
-      fuzzy: `\n아직 헷갈리면 “더 쉽게” 또는 “예시 줘”라고 물어봐.\n`,
+      sources: "이 답의 출처",
+      fuzzy: `\n더 쉽게? 아니면 같은 질문의 예시?\n`,
     },
     zh: {
-      short: "简短回答",
-      more: "更多细节",
-      sourceTopic: "来源主题",
-      how: "怎么运作",
-      causes: "主要原因",
-      diff: "区别在这里",
-      answer: "答案",
-      lead: (n, topic, intent) =>
-        `好${n}——我理解你在问 **${topic}**（${intent}）。我检索了网络，这里是扎实的回答：\n\n`,
+      short: "回答",
+      more: "原因 / 更多",
+      sourceTopic: "来自",
+      how: "怎么",
+      causes: "原因",
+      diff: "区别",
+      answer: "回答",
+      lead: (n) => `好${n}——直接回答你的问题：\n\n`,
       noMatch: (topic, n) =>
-        `我搜了 **${topic}**${n}，但没有很强的匹配。用主题关键词再问一次试试。\n`,
-      related: "来自网络的相关背景",
-      also: "也有用",
+        `没找到能直接回答这个问题的资料${n}。用问题里的关键词再问一次（主题：**${topic}**）。\n`,
+      related: "和你的问题有关",
+      also: "仍围绕你的问题",
       planTitle: "快速学习计划",
       plan: "20 分钟阅读 + 默写 5 个要点，15 分钟口述，15 分钟练习，10 分钟复盘错题。",
-      sources: "我用到的来源",
-      fuzzy: `\n如果还有不清楚的，可以说：“讲简单点”或“给我个例子。”\n`,
+      sources: "这个回答的来源",
+      fuzzy: `\n要更简单，还是要同一个问题的例子？\n`,
     },
   };
 
@@ -6141,11 +6133,46 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       .filter((s) => s.length > 25) || [];
   }
 
+  /** Penalize common near-miss topics (WWII for WWI, etc.) */
+  function offTopicPenalty(text, question) {
+    const q = String(question || "").toLowerCase();
+    const t = String(text || "").toLowerCase();
+    let pen = 0;
+    if (/world war (i|1|one)\b/.test(q) && /world war (ii|2|two)\b/.test(t) && !/world war (i|1|one)\b/.test(t)) pen += 0.7;
+    if (/world war (ii|2|two)\b/.test(q) && /world war (i|1|one)\b/.test(t) && !/world war (ii|2|two)\b/.test(t)) pen += 0.7;
+    if (/\bmoon\b/.test(q) && /\bmars\b/.test(t) && !/\bmoon\b/.test(t)) pen += 0.4;
+    if (/\bmitosis\b/.test(q) && /\bmeiosis\b/.test(t) && !/\bmitosis\b/.test(t) && !/\bvs|difference|compare\b/.test(q)) pen += 0.35;
+    if (/\bmeiosis\b/.test(q) && /\bmitosis\b/.test(t) && !/\bmeiosis\b/.test(t) && !/\bvs|difference|compare\b/.test(q)) pen += 0.35;
+    return pen;
+  }
+
+  /** How much a text chunk actually matches the asked question (0–1) */
+  function relevanceToQuestion(text, question, topic = "") {
+    const qWords = extractKeywords(`${question} ${topic}`);
+    if (!qWords.length) return 0.5;
+    const low = String(text || "").toLowerCase();
+    const topicLow = String(topic || "").toLowerCase();
+    let hits = 0;
+    qWords.forEach((w) => {
+      if (low.includes(w)) hits += 1;
+    });
+    let score = hits / qWords.length;
+    // Strong boost if the full topic phrase appears
+    if (topicLow.length > 3 && low.includes(topicLow)) score += 0.35;
+    // Soft boost for multi-word topic pieces together
+    const topicBits = topicLow.split(/\s+/).filter((w) => w.length > 2);
+    if (topicBits.length >= 2 && topicBits.every((w) => low.includes(w))) score += 0.15;
+    score -= offTopicPenalty(low, question);
+    return Math.max(0, Math.min(1, score));
+  }
+
   function pickAnswerSentences(intent, question, hits, max = 4) {
-    const qWords = extractKeywords(`${question}`);
+    const qWords = extractKeywords(question);
     const scored = [];
     const seen = new Set();
-    for (const hit of hits.slice(0, 6)) {
+    for (const hit of hits.slice(0, 8)) {
+      // Skip whole pages that are clear near-misses for this question
+      if (offTopicPenalty(`${hit.title} ${hit.extract || ""}`, question) >= 0.5) continue;
       const sents = splitSentences(hit.extract || hit.text || "");
       for (const s of sents) {
         const key = s.slice(0, 80).toLowerCase();
@@ -6153,46 +6180,65 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         seen.add(key);
         let score = 0;
         const low = s.toLowerCase();
+        if (offTopicPenalty(low, question) >= 0.5) continue;
+        let wordHits = 0;
         qWords.forEach((w) => {
-          if (low.includes(w)) score += 2;
+          if (low.includes(w)) {
+            score += 3;
+            wordHits += 1;
+          }
         });
+        // Must touch the question — drop generic encyclopedia fluff
+        if (qWords.length && wordHits === 0) continue;
+        // Need enough overlap for multi-word questions (avoid "war" alone matching WWII)
+        if (qWords.length >= 3 && wordHits < 2) continue;
+
         if (intent === "why" || intent === "causes") {
-          if (/\b(because|cause|due to|result|leads? to|scattering|porqu|weil|потому|때문에|ため)\b/i.test(s)) score += 4;
+          if (/\b(because|cause|due to|result|leads? to|scattering|porqu|weil|потому|때문에|ため)\b/i.test(s)) score += 5;
         }
         if (intent === "who") {
-          if (/\b(invent|discover|born|scientist|author|founder|is a|was a)\b/i.test(s)) score += 3;
+          if (/\b(invent|discover|born|scientist|author|founder|is a|was a|created|designed)\b/i.test(s)) score += 4;
         }
         if (intent === "when") {
-          if (/\b(1[0-9]{3}|20[0-9]{2}|January|February|March|April|May|June|July|August|September|October|November|December)\b/i.test(s)) score += 3;
+          if (/\b(1[0-9]{3}|20[0-9]{2}|January|February|March|April|May|June|July|August|September|October|November|December)\b/i.test(s)) score += 4;
         }
         if (intent === "how") {
-          if (/\b(by|through|process|steps?|works?|using|via)\b/i.test(s)) score += 2;
+          if (/\b(by|through|process|steps?|works?|using|via|converts?|produces?)\b/i.test(s)) score += 3;
         }
         if (intent === "yesno") {
-          if (/\b(is|are|was|were|not|yes|no)\b/i.test(s)) score += 1;
+          if (/\b(is|are|was|were|not|no |yes )\b/i.test(s)) score += 2;
         }
-        // Prefer earlier sentences from top hits
-        score += Math.max(0, 3 - hits.indexOf(hit));
-        scored.push({ s, score, title: hit.title });
+        if (intent === "compare") {
+          if (/\b(whereas|while|unlike|different|both|however|vs)\b/i.test(s)) score += 3;
+        }
+        score += relevanceToQuestion(s, question) * 6;
+        score += Math.max(0, (hit.score || 0) * 0.15);
+        score += Math.max(0, 2 - hits.indexOf(hit));
+        scored.push({ s, score, title: hit.title, wordHits });
       }
     }
-    return scored
-      .sort((a, b) => b.score - a.score)
-      .slice(0, max)
-      .map((x) => x.s);
+    const ranked = scored.sort((a, b) => b.score - a.score);
+    const onTopic = ranked.filter((x) => x.wordHits > 0);
+    return (onTopic.length ? onTopic : ranked).slice(0, max).map((x) => x.s);
   }
 
-  function craftDirectAnswer(intent, topic, bestHit, langCode = "en", supportHits = []) {
+  function craftDirectAnswer(intent, topic, bestHit, langCode = "en", supportHits = [], question = "") {
     const pack = answerPack(langCode);
     const extract = humanizeFact(bestHit?.extract || bestHit?.text || "");
     const title = bestHit?.title || topic;
     if (!extract) return "";
 
+    const q = question || topic;
     const allHits = [bestHit, ...supportHits].filter(Boolean);
-    const picked = pickAnswerSentences(intent, topic, allHits, intent === "compare" ? 5 : 4);
+    // Only use support hits that still relate to the asked question
+    const relatedHits = allHits.filter(
+      (h) => relevanceToQuestion(`${h.title} ${h.extract || h.text || ""}`, q, topic) >= 0.2
+    );
+    const pool = relatedHits.length ? relatedHits : [bestHit];
+    const picked = pickAnswerSentences(intent, q, pool, intent === "compare" ? 5 : 4);
     const lead = picked[0] || firstSentences(extract, 2);
-    const more = picked.slice(1).join(" ");
-    const rest = more || (extract.length > lead.length + 20 ? firstSentences(extract.replace(lead, "").trim(), 2) : "");
+    const more = picked.slice(1).filter((s) => relevanceToQuestion(s, q, topic) >= 0.15).join(" ");
+    const rest = more || "";
 
     if (intent === "who") {
       return `**${pack.short}:** ${lead}\n\n${rest ? `**${pack.more}:** ${rest}\n\n` : ""}${pack.sourceTopic}: **${title}**.`;
@@ -6213,16 +6259,19 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       return `**${label}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "compare") {
-      return `**${pack.diff}:**\n\n${lead}${rest ? `\n\n${rest}` : `\n\n${extract}`}`;
+      return `**${pack.diff}:**\n\n${lead}${rest ? `\n\n${rest}` : ""}`;
     }
     if (intent === "examples") {
       return `**${pack.answer}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "yesno") {
-      return `**${pack.short}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
+      const blob = `${lead} ${rest}`.toLowerCase();
+      const neg = /\b(not a|isn't|is not|are not|aren't|no longer|never)\b/i.test(blob);
+      const verdict = neg ? "No" : /yes\b|is a |are a |was a /i.test(blob) ? "Yes — with nuance" : "Short take";
+      return `**${pack.short} (${verdict}):** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "define") {
-      return `**${title}:** ${lead}${rest ? `\n\n${rest}` : ""}`;
+      return `**${pack.answer}:** ${lead}${rest ? `\n\n${rest}` : ""}`;
     }
     return `**${pack.answer}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
   }
@@ -6232,56 +6281,45 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     const langCode = info.lang?.code || aiLastLang?.code || "en";
     if (info.lang) aiLastLang = info.lang;
     const pack = answerPack(langCode);
-    const hits = rankHits(webHits.length ? webHits : collectWebHits(research), question, info.topic)
-      .filter((h) => {
-        const text = h.extract || h.text || "";
-        if (!text) return false;
-        // Keep any reasonably useful hit, even if score is low — never throw away the only answer
-        return h.score == null || h.score > 0 || text.length > 40;
-      });
-    // If ranking wiped everything, fall back to raw hits with text
-    const usable =
-      hits.length > 0
-        ? hits
-        : (webHits.length ? webHits : collectWebHits(research)).filter((h) => h.extract || h.text);
+    const ranked = rankHits(webHits.length ? webHits : collectWebHits(research), question, info.topic)
+      .filter((h) => (h.extract || h.text || "").length > 20);
+
+    // Keep only sources that relate to the asked question (not just any strong page)
+    const related = ranked.filter(
+      (h) =>
+        relevanceToQuestion(`${h.title} ${h.extract || h.text || ""}`, question, info.topic) >= 0.25 ||
+        (h.score || 0) >= 8
+    );
+    const usable = related.length ? related : ranked.slice(0, 3);
     const best = usable[0];
     const overview = best?.extract || best?.text || "";
     const nameBit = aiUserName ? `, ${aiUserName}` : "";
-    const support = usable.slice(1, 5);
+    const support = usable.slice(1, 4);
 
     let out = "";
     if (mathBlock) {
       out += `${mathBlock}\n`;
-      if (overview) out += `\n${pack.related}: ${firstSentences(overview, 2)}\n`;
+      if (overview && relevanceToQuestion(overview, question, info.topic) >= 0.2) {
+        out += `\n${pack.related}: ${firstSentences(overview, 2)}\n`;
+      }
     } else if (overview) {
-      out += pack.lead(nameBit, info.topic, info.intent);
-      out += `${craftDirectAnswer(info.intent, info.topic, best, langCode, support)}\n`;
+      out += pack.lead(nameBit);
+      out += `> ${question.trim()}\n\n`;
+      out += `${craftDirectAnswer(info.intent, info.topic, best, langCode, support, question)}\n`;
     } else {
-      // Absolute last resort — still give a useful, honest solid attempt
       out += pack.noMatch(info.topic, nameBit);
-      out +=
-        langCode === "es"
-          ? `\nMientras tanto: reformula con el **concepto principal** + 1 detalle (fecha, persona, o “por qué”). Ejemplo: “fotosíntesis proceso” o “quién inventó el teléfono”.\n`
-          : langCode === "fr"
-            ? `\nEn attendant : reformule avec le **concept clé** + 1 détail. Exemple : “photosynthèse processus” ou “qui a inventé le téléphone”.\n`
-            : `\nMeanwhile tip: rephrase with the **main concept** + one detail (date, person, or “why”). Example: “photosynthesis process” or “who invented the telephone”.\n`;
     }
 
-    // Key facts distilled from multiple sources (solid multi-angle answer)
+    // Extra bullets must still answer / support THIS question
     if (overview && support.length) {
-      const keyFacts = pickAnswerSentences(info.intent, question, usable, 5).slice(1, 4);
-      const uniqueFacts = keyFacts.filter((f) => !overview.slice(0, 120).includes(f.slice(0, 40)));
-      if (uniqueFacts.length) {
+      const keyFacts = pickAnswerSentences(info.intent, question, usable, 6)
+        .slice(1)
+        .filter((f) => relevanceToQuestion(f, question, info.topic) >= 0.25)
+        .slice(0, 3);
+      if (keyFacts.length) {
         out += `\n**${pack.also}:**\n`;
-        uniqueFacts.forEach((f) => {
+        keyFacts.forEach((f) => {
           out += `- ${f}\n`;
-        });
-      } else {
-        out += `\n**${pack.also}:**\n`;
-        support.slice(0, 3).forEach((h) => {
-          const blurb = firstSentences(humanizeFact(h.extract || h.text || ""), 1);
-          if (!blurb) return;
-          out += `- **${h.title}**: ${blurb}\n`;
         });
       }
     }
@@ -6292,7 +6330,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
 
     if (usable.length) {
       out += `\n**${pack.sources}:**\n`;
-      usable.slice(0, 6).forEach((h, i) => {
+      usable.slice(0, 5).forEach((h, i) => {
         out += `${i + 1}. [${h.title}](${h.url})\n`;
       });
     }
@@ -6304,7 +6342,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return {
       content: out.trim(),
       followups: extractFollowups(out, question, research),
-      sources: usable.slice(0, 6),
+      sources: usable.slice(0, 5),
     };
   }
 
@@ -6333,7 +6371,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     const nameLine = aiUserName ? `Their name is ${aiUserName}. ` : "";
     const langLine = `User language detected: ${lang.name} (${lang.code}). ALWAYS reply in ${lang.name} unless they explicitly ask for another language.`;
     const userPayload = brief
-      ? `QUESTION (${lang.name}): ${question}\n\nINTERNET RESULTS:\n${brief}\n\nWrite a SOLID answer in ${lang.name}. Requirements: (1) first sentence answers the question directly, (2) then a clear explanation, (3) a few useful extras if supported, (4) source links. Never dodge. If results are incomplete, still give the strongest answer you can from them.`
+      ? `USER'S EXACT QUESTION (${lang.name}): ${question}\n\nINTERNET RESULTS (may include off-topic pages — IGNORE anything that does not help answer THIS question):\n${brief}\n\nReply in ${lang.name}. Requirements:\n1) First sentence must answer the exact question above (not a related topic).\n2) Stay on that question in the explanation.\n3) Only use relevant sources; skip off-topic results.\n4) Optional extras only if they still relate to the asked question.\n5) Source links at the end.\nDo NOT give a generic encyclopedia summary of a nearby subject.`
       : `QUESTION (${lang.name}): ${question}\n\nReply in ${lang.name} like a real person. Keep the vibe natural.`;
     const messages = [
       { role: "system", content: `${AI_SYSTEM}\n${nameLine}${langLine}` },
@@ -6423,7 +6461,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         try {
           content = await askLlmChat(
             q,
-            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nDetected language: ${understood.lang?.name || aiLastLang.name} (${understood.lang?.code || aiLastLang.code})\nPulseSearch confidence: ${confPct}% (phase ${phase})\nGive a solid direct answer in the user's language.`
+            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nDetected language: ${understood.lang?.name || aiLastLang.name} (${understood.lang?.code || aiLastLang.code})\nPulseSearch confidence: ${confPct}% (phase ${phase})\nAnswer the user's EXACT question (${q}). Do not substitute a generic topic overview.`
           );
           followups = extractFollowups(content, q, research);
         } catch (err) {
