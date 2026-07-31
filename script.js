@@ -1566,6 +1566,16 @@
     refreshModeButtons();
     syncTimerDurationUI();
 
+    // Focus Off = games always available (must run before any early return)
+    // Re-enabling Focus locks until a study session finishes
+    if (isModeOff("focus")) {
+      unlockGames();
+    } else if (focusReenabled) {
+      gamesUnlocked = false;
+      if (els.gameModal && !els.gameModal.hidden) closeGameModal();
+      if (els.gameShop) renderShop();
+    }
+
     // If current mode was turned off, jump to first enabled mode
     if (isModeOff(currentMode)) {
       const next = ["focus", "short", "long"].find((m) => !isModeOff(m));
@@ -1576,7 +1586,6 @@
         currentMode = "focus";
         totalForMode = 0;
         remaining = 0;
-        unlockGames();
         renderTimer();
       }
       return;
@@ -1585,20 +1594,9 @@
     if (!running && keepMode) {
       totalForMode = modeSeconds(currentMode);
       remaining = totalForMode;
-      renderTimer();
     }
-
-    // Focus Off = games always available; re-enabling Focus locks until a session finishes
-    if (isModeOff("focus")) {
-      unlockGames();
-    } else {
-      if (focusReenabled) {
-        gamesUnlocked = false;
-        if (els.gameModal && !els.gameModal.hidden) closeGameModal();
-      }
-      if (els.gameShop) renderShop();
-      renderTimer();
-    }
+    renderTimer();
+    if (!isModeOff("focus") && els.gameShop) renderShop();
   }
 
   function renderTimer() {
