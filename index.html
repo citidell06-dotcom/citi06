@@ -285,9 +285,38 @@
       </div>
 
       <div class="timer-modes" role="group" aria-label="Timer mode">
-        <button type="button" class="mode-btn active" data-mode="focus" data-seconds="1500">Focus 25</button>
-        <button type="button" class="mode-btn" data-mode="short" data-seconds="300">Break 5</button>
-        <button type="button" class="mode-btn" data-mode="long" data-seconds="900">Break 15</button>
+        <button type="button" class="mode-btn active" data-mode="focus" data-seconds="1500" id="mode-focus">Focus 25</button>
+        <button type="button" class="mode-btn" data-mode="short" data-seconds="300" id="mode-short">Break 5</button>
+        <button type="button" class="mode-btn" data-mode="long" data-seconds="900" id="mode-long">Break 15</button>
+      </div>
+
+      <div class="timer-durations" aria-label="Customize timer lengths">
+        <p class="timer-dur-title">Customize times</p>
+        <label class="timer-dur-row">
+          <span>Focus</span>
+          <input type="number" id="dur-focus" min="0" max="180" value="25" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="focus">Off</button>
+        </label>
+        <label class="timer-dur-row">
+          <span>Short break</span>
+          <input type="number" id="dur-short" min="0" max="180" value="5" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="short">Off</button>
+        </label>
+        <label class="timer-dur-row">
+          <span>Long break</span>
+          <input type="number" id="dur-long" min="0" max="180" value="15" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="long">Off</button>
+        </label>
+        <label class="timer-dur-row">
+          <span>Rest popup</span>
+          <input type="number" id="dur-rest" min="0" max="60" value="5" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="rest">Off</button>
+        </label>
+        <p class="timer-dur-hint">0 or Off disables that mode. Focus Off unlocks games anytime.</p>
       </div>
 
       <div class="timer-controls">

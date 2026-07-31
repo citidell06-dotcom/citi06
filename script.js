@@ -337,6 +337,10 @@
     settingsClose: document.getElementById("settings-close"),
     settingBrightness: document.getElementById("setting-brightness"),
     settingBrightnessVal: document.getElementById("setting-brightness-val"),
+    durFocus: document.getElementById("dur-focus"),
+    durShort: document.getElementById("dur-short"),
+    durLong: document.getElementById("dur-long"),
+    durRest: document.getElementById("dur-rest"),
     settingSound: document.getElementById("setting-sound"),
     settingSoundVal: document.getElementById("setting-sound-val"),
     settingMusic: document.getElementById("setting-music"),
@@ -413,6 +417,12 @@
       soundVolume: clampNum(loaded?.settings?.soundVolume, 0, 100, 80),
       musicVolume: clampNum(loaded?.settings?.musicVolume, 0, 100, 70),
       muted: Boolean(loaded?.settings?.muted),
+      timerMins: {
+        focus: clampNum(loaded?.settings?.timerMins?.focus, 0, 180, 25),
+        short: clampNum(loaded?.settings?.timerMins?.short, 0, 180, 5),
+        long: clampNum(loaded?.settings?.timerMins?.long, 0, 180, 15),
+        rest: clampNum(loaded?.settings?.timerMins?.rest, 0, 60, 5),
+      },
       aiKey: typeof loaded?.settings?.aiKey === "string" ? loaded.settings.aiKey : "",
       aiBase:
         typeof loaded?.settings?.aiBase === "string" && loaded.settings.aiBase
@@ -431,6 +441,23 @@
     return Math.min(max, Math.max(min, n));
   }
 
+  function getTimerMins(mode) {
+    const t = state.settings.timerMins || {};
+    if (mode === "focus") return clampNum(t.focus, 0, 180, 25);
+    if (mode === "short") return clampNum(t.short, 0, 180, 5);
+    if (mode === "long") return clampNum(t.long, 0, 180, 15);
+    if (mode === "rest") return clampNum(t.rest, 0, 60, 5);
+    return 0;
+  }
+
+  function modeSeconds(mode) {
+    return getTimerMins(mode) * 60;
+  }
+
+  function isModeOff(mode) {
+    return getTimerMins(mode) <= 0;
+  }
+
   function normalizeQuests(quests) {
     if (!Array.isArray(quests)) return [];
     return quests.map((q) => ({
@@ -443,13 +470,13 @@
     return (DIFFICULTY[difficulty] || DIFFICULTY.medium).xp;
   }
 
-  let remaining = 25 * 60;
-  let totalForMode = 25 * 60;
+  let remaining = modeSeconds("focus") || 25 * 60;
+  let totalForMode = remaining;
   let currentMode = "focus";
   let timerId = null;
   let running = false;
-  /** Games stay locked until a focus (study) session finishes */
-  let gamesUnlocked = false;
+  /** Games stay locked until a focus (study) session finishes (unless Focus is Off) */
+  let gamesUnlocked = isModeOff("focus");
   let toastTimer = null;
   let audioCtx = null;
   let soundBus = null;
@@ -1130,6 +1157,7 @@
     applyAudioSettings();
     syncSettingsUI();
 
+    state.settings.timerMins = { focus: 25, short: 5, long: 15, rest: 5 };
     remaining = 25 * 60;
     totalForMode = 25 * 60;
     currentMode = "focus";
@@ -1144,6 +1172,7 @@
       btn.classList.toggle("active", btn.dataset.mode === "focus");
     });
 
+    applyTimerDurations();
     renderXp();
     renderQuests();
     renderTimer();
@@ -1501,7 +1530,73 @@
   }
 
   function canPlayGames() {
+    // Focus Off = no study lock
+    if (isModeOff("focus")) return true;
     return gamesUnlocked === true;
+  }
+
+  function syncTimerDurationUI() {
+    if (els.durFocus) els.durFocus.value = String(getTimerMins("focus"));
+    if (els.durShort) els.durShort.value = String(getTimerMins("short"));
+    if (els.durLong) els.durLong.value = String(getTimerMins("long"));
+    if (els.durRest) els.durRest.value = String(getTimerMins("rest"));
+  }
+
+  function refreshModeButtons() {
+    const labels = {
+      focus: (m) => (m <= 0 ? "Focus Off" : `Focus ${m}`),
+      short: (m) => (m <= 0 ? "Break Off" : `Break ${m}`),
+      long: (m) => (m <= 0 ? "Break Off" : `Break ${m}`),
+    };
+    els.modeButtons.forEach((btn) => {
+      const mode = btn.dataset.mode;
+      const mins = getTimerMins(mode);
+      const secs = mins * 60;
+      btn.dataset.seconds = String(secs);
+      btn.textContent = (labels[mode] || ((m) => String(m)))(mins);
+      btn.disabled = mins <= 0;
+      btn.classList.toggle("is-off", mins <= 0);
+      if (mins <= 0 && btn.classList.contains("active")) {
+        btn.classList.remove("active");
+      }
+    });
+  }
+
+  function applyTimerDurations({ keepMode = true } = {}) {
+    refreshModeButtons();
+    syncTimerDurationUI();
+
+    // If current mode was turned off, jump to first enabled mode
+    if (isModeOff(currentMode)) {
+      const next = ["focus", "short", "long"].find((m) => !isModeOff(m));
+      if (next) {
+        setMode(next, modeSeconds(next));
+      } else {
+        stopTimer();
+        currentMode = "focus";
+        totalForMode = 0;
+        remaining = 0;
+        unlockGames();
+        renderTimer();
+      }
+      return;
+    }
+
+    if (!running && keepMode) {
+      totalForMode = modeSeconds(currentMode);
+      remaining = totalForMode;
+      renderTimer();
+    }
+
+    // Focus Off keeps games unlocked; turning Focus back on locks until a session finishes
+    if (isModeOff("focus")) {
+      unlockGames();
+    } else {
+      gamesUnlocked = false;
+      if (els.gameModal && !els.gameModal.hidden) closeGameModal();
+      if (els.gameShop) renderShop();
+      renderTimer();
+    }
   }
 
   function renderTimer() {
@@ -1513,14 +1608,23 @@
 
     const labels = { focus: "Focus", short: "Short Break", long: "Long Break" };
     els.timerMode.textContent = labels[currentMode] || "Focus";
-    if (currentMode === "focus") {
-      els.timerHint.textContent = gamesUnlocked
+    if (isModeOff("focus") && isModeOff("short") && isModeOff("long")) {
+      els.timerHint.textContent = "All timer modes are Off — set minutes above to use the Pomodoro.";
+    } else if (isModeOff(currentMode)) {
+      els.timerHint.textContent = "This mode is Off — pick another mode or set minutes above.";
+    } else if (currentMode === "focus") {
+      els.timerHint.textContent = canPlayGames()
         ? "Start focus to lock games again · finish for +25 XP."
         : "Games stay locked until this study session finishes · +25 XP when done.";
     } else {
-      els.timerHint.textContent = gamesUnlocked
+      els.timerHint.textContent = canPlayGames()
         ? "Games unlocked — play a break game, then jump back in."
         : "Take a break — finish a focus session next time to unlock games.";
+    }
+
+    if (els.timerToggle) {
+      const allOff = isModeOff("focus") && isModeOff("short") && isModeOff("long");
+      els.timerToggle.disabled = allOff || isModeOff(currentMode);
     }
   }
 
@@ -1546,7 +1650,14 @@
       } else {
         showToast("Break over — rest time!");
       }
-      openRewardModal();
+      if (isModeOff("rest")) {
+        // Rest popup Off — skip the countdown modal
+        if (finishedMode === "focus" && state.ownedGames.length) {
+          showToast("Rest popup Off — play from the shop if you want");
+        }
+      } else {
+        openRewardModal();
+      }
       return;
     }
 
@@ -1556,8 +1667,16 @@
 
   function startTimer() {
     if (running) return;
+    if (isModeOff(currentMode)) {
+      showToast("This mode is Off — set minutes above to enable it");
+      return;
+    }
+    if (totalForMode <= 0) {
+      showToast("Set a time above first");
+      return;
+    }
     // Starting (or resuming) study locks games until the session completes
-    if (currentMode === "focus") {
+    if (currentMode === "focus" && !isModeOff("focus")) {
       lockGames();
     }
     running = true;
@@ -1577,17 +1696,23 @@
   }
 
   function setMode(mode, seconds) {
+    const mins = getTimerMins(mode);
+    if (mins <= 0) {
+      showToast(`${mode === "focus" ? "Focus" : "Break"} is Off — set minutes above to turn it on`);
+      refreshModeButtons();
+      return;
+    }
     stopTimer();
     currentMode = mode;
-    totalForMode = seconds;
-    remaining = seconds;
+    totalForMode = seconds > 0 ? seconds : mins * 60;
+    remaining = totalForMode;
 
     els.modeButtons.forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
 
     // Switching back to Focus locks games for the next study block
-    if (mode === "focus") {
+    if (mode === "focus" && !isModeOff("focus")) {
       lockGames();
     }
 
@@ -1614,7 +1739,46 @@
 
   els.modeButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      setMode(btn.dataset.mode, Number(btn.dataset.seconds));
+      if (isModeOff(btn.dataset.mode)) {
+        showToast("That mode is Off — set minutes above to enable it");
+        return;
+      }
+      setMode(btn.dataset.mode, modeSeconds(btn.dataset.mode));
+    });
+  });
+
+  function readDurInput(el, max) {
+    if (!el) return null;
+    const n = Math.round(Number(el.value));
+    if (!Number.isFinite(n)) return null;
+    return Math.min(max, Math.max(0, n));
+  }
+
+  function persistTimerDurations(fromOffBtn) {
+    const focus = readDurInput(els.durFocus, 180);
+    const short = readDurInput(els.durShort, 180);
+    const long = readDurInput(els.durLong, 180);
+    const rest = readDurInput(els.durRest, 60);
+    if (focus != null) state.settings.timerMins.focus = focus;
+    if (short != null) state.settings.timerMins.short = short;
+    if (long != null) state.settings.timerMins.long = long;
+    if (rest != null) state.settings.timerMins.rest = rest;
+    saveState();
+    applyTimerDurations();
+    if (fromOffBtn) showToast("Mode turned Off");
+  }
+
+  ["durFocus", "durShort", "durLong", "durRest"].forEach((key) => {
+    els[key]?.addEventListener("change", () => persistTimerDurations(false));
+  });
+
+  document.querySelectorAll("[data-dur-off]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.durOff;
+      const map = { focus: "durFocus", short: "durShort", long: "durLong", rest: "durRest" };
+      const input = els[map[mode]];
+      if (input) input.value = "0";
+      persistTimerDurations(true);
     });
   });
 
@@ -1758,7 +1922,7 @@
     }
   });
 
-  let restRemaining = REST_SECONDS;
+  let restRemaining = modeSeconds("rest") || REST_SECONDS;
   let restTimerId = null;
 
   function renderRestCountdown() {
@@ -1795,7 +1959,17 @@
         .join("");
     }
 
-    restRemaining = REST_SECONDS;
+    const restSecs = modeSeconds("rest");
+    if (restSecs <= 0) {
+      // Rest Off — still show quick play picker without countdown if games are unlocked
+      restRemaining = 0;
+      renderRestCountdown();
+      stopRestCountdown();
+      els.rewardModal.hidden = false;
+      return;
+    }
+
+    restRemaining = restSecs;
     renderRestCountdown();
     stopRestCountdown();
     restTimerId = setInterval(() => {
@@ -6668,6 +6842,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   renderAiChat();
   renderXp();
   renderQuests();
+  applyTimerDurations();
   renderTimer();
   renderTokens();
   renderShop();
