@@ -4096,12 +4096,16 @@
   }
 
   /* ---------- AI Mode (human chat + research + math) ---------- */
-  const AI_SYSTEM = `You are a friendly study buddy inside "study with games".
-Talk like a real person: warm, clear, natural — contractions are good.
-When INTERNET RESULTS are provided, you MUST use them to answer the question. Summarize clearly in your own words, then include the source links as markdown.
-If results conflict, say so briefly. If results are weak, say what you found and what is still unclear.
-You can also chat casually. Remember the conversation.
-For math: walk through steps out loud. End with 2-3 natural follow-up questions.
+  const AI_SYSTEM = `You are a sharp study buddy inside "study with games".
+Your job: understand the user's question, use the INTERNET RESULTS, and give a solid direct answer.
+Structure:
+1) One clear short answer in the first 1-2 sentences (actually answer what they asked).
+2) A fuller explanation in plain English (why/how as needed).
+3) Optional extra useful facts.
+4) Source links as markdown.
+Talk naturally. Don't dodge the question. Don't just paste random page blurbs.
+If results are weak, say what you found and what's still unclear.
+For math: show steps. End with 2-3 natural follow-up questions.
 Be accurate. Don't take invigilated exams for them — teach instead.`;
 
   let aiUserName = "";
@@ -4206,23 +4210,34 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   function isChitchat(q) {
     const t = q.trim().toLowerCase().replace(/[!?.]+$/g, "");
     if (t.length <= 2) return true;
+
+    // If they're asking for info / homework, always search — even if it starts with "hey"
+    if (
+      /\b(what is|what's|whats|who is|who's|who invented|where is|when did|when was|why does|why do|why is|how does|how do|how to|explain|define|tell me about|search|look up|google|find out|homework|solve|equation|difference between|vs\.?|versus)\b/i.test(
+        t
+      )
+    ) {
+      return false;
+    }
+
     const chatOnly = [
-      /^(hi|hey|hello|yo|sup|hiya|howdy)\b/,
-      /^(good )?(morning|afternoon|evening|night)\b/,
-      /^(how are you|how's it going|how r u|whats up|what's up|wyd)\b/,
-      /^(thanks|thank you|thx|ty|appreciate it)\b/,
-      /^(lol|lmao|haha|hehe|omg|wow|nice|cool|okay|ok|k|alright|bet|fr|true)\b/,
-      /^(bye|goodbye|see ya|later|gtg)\b/,
-      /^(i'?m )?(tired|stressed|sad|anxious|overwhelmed|bored|hungry)\b/,
-      /^(who are you|what are you|what can you do)\b/,
-      /^(love you|ily)\b/,
+      /^(hi|hey|hello|yo|sup|hiya|howdy)$/,
+      /^(hi|hey|hello|yo|sup|hiya|howdy)\s+(there|friend|man|dude|bro)?$/,
+      /^(good )?(morning|afternoon|evening|night)$/,
+      /^(how are you|how's it going|how r u|whats up|what's up|wyd)$/,
+      /^(thanks|thank you|thx|ty|appreciate it|thanks a lot|thank you so much)$/,
+      /^(lol|lmao|haha|hehe|omg|wow|nice|cool|okay|ok|k|alright|bet|fr|true)$/,
+      /^(bye|goodbye|see ya|later|gtg)$/,
+      /^(i'?m )?(tired|stressed|sad|anxious|overwhelmed|bored|hungry)$/,
+      /^(who are you|what are you|what can you do)$/,
+      /^(love you|ily)$/,
     ];
     if (chatOnly.some((re) => re.test(t))) return true;
-    // short social message with no study keywords
+
     if (
-      t.length < 40 &&
-      !/\b(solve|explain|homework|math|equation|test|essay|history|science|why|how|what is|help me with)\b/i.test(t) &&
-      /^(hey|hi|yo|ok|okay|yeah|yep|nah|idk|hmm|wow)/i.test(t)
+      t.length < 28 &&
+      /^(hey|hi|yo|ok|okay|yeah|yep|nah|idk|hmm|wow)\b/i.test(t) &&
+      !/\b(is|are|was|were|did|does|can|could|should|would)\b/i.test(t)
     ) {
       return true;
     }
@@ -4287,53 +4302,133 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return String(r);
   }
 
-  function buildSubtopics(question, prior) {
-    const q = question.trim();
-    const lower = q.toLowerCase();
-    const topics = new Set();
-    topics.add(q.replace(/\?+$/, "").slice(0, 80));
+  function understandQuestion(question, prior) {
+    const raw = question.trim();
+    const lower = raw.toLowerCase();
+    let intent = "explain";
+    if (/^\s*(who|who's|who is|who was|who invented|who discovered)/i.test(raw)) intent = "who";
+    else if (/^\s*(when|what year|what date)/i.test(raw)) intent = "when";
+    else if (/^\s*(where|which country|which city)/i.test(raw)) intent = "where";
+    else if (/\b(why|how come|reason)\b/i.test(raw)) intent = "why";
+    else if (/\b(how (do|does|did|to|can|would)|steps?|process)\b/i.test(raw)) intent = "how";
+    else if (/\b(vs\.?|versus|difference between|compare|compared to)\b/i.test(raw)) intent = "compare";
+    else if (/\b(define|definition|what (is|are|was|were)|what's|whats)\b/i.test(raw)) intent = "define";
+    else if (/\b(cause|causes|led to|resulted)\b/i.test(raw)) intent = "causes";
+    else if (/\b(example|examples)\b/i.test(raw)) intent = "examples";
+    else if (trySolveMath(raw)) intent = "math";
 
-    const vs = q.match(/(.+?)\s+(?:vs\.?|versus|compared to|difference between)\s+(.+)/i);
-    if (vs) {
-      topics.add(vs[1].replace(/^(what(?:'| i)?s|the)\s+/i, "").trim());
-      topics.add(vs[2].replace(/\?+$/, "").trim());
-      topics.add(`${vs[1].trim()} vs ${vs[2].replace(/\?+$/, "").trim()}`);
-    }
-
-    const cleaned = q
-      .replace(/^(can you |could you |please |hey |hi |okay |ok )/i, "")
-      .replace(/^(explain|define|describe|summarize|what is|what's|whats|who is|who's|how does|how do|why does|why do|tell me about|help me with|help with)\s+/i, "")
-      .replace(/\?+$/, "")
+    let topic = raw
+      .replace(/^(hey|hi|yo|please|can you|could you|would you|okay|ok|um+|uh+)\s+/i, "")
+      .replace(/^(explain|define|describe|summarize|tell me about|help me (with|understand)|look up|search for|google|find out)\s+/i, "")
+      .replace(/^(what is|what's|whats|what are|who is|who's|who was|who invented|who discovered|where is|where are|when did|when was|why is|why are|why does|why do|how does|how do|how did|how to|how come)\s+/i, "")
+      .replace(/\b(like i'?m (tired|dumb|5|in \w+ grade)|in plain english|simply|simple|please|for me|step by step)\b/gi, "")
+      .replace(/[?!]+$/g, "")
+      .replace(/\s+/g, " ")
       .trim();
-    if (cleaned && cleaned.length > 2) topics.add(cleaned);
 
-    if (/cause|caused|reasons?|led to/i.test(q)) topics.add(`${cleaned} causes`);
-    if (/example|examples/i.test(q)) topics.add(`${cleaned} examples`);
-    if (/history|war|revolution|empire|civilization/i.test(q)) topics.add(`${cleaned} history`);
-    if (/formula|equation|solve|math|algebra|calculus|geometry|percent|fraction/i.test(q)) {
-      topics.add(`${cleaned} formula`);
-      topics.add(`${cleaned} worked example`);
-    }
-    if (/photosynthesis|mitosis|meiosis|cell|atom|gravity|photosynthesis/i.test(q)) {
-      topics.add(`${cleaned} process`);
-      topics.add(`${cleaned} importance`);
-    }
+    if (!topic || topic.length < 2) topic = raw.replace(/[?!]+$/g, "").trim();
 
-    // conversational follow-ups: pull nouns from last assistant topic
-    if (prior && /^(yes|yeah|yep|sure|ok|okay|more|go deeper|why|how|and|also|what about|tell me more|continue|elaborate)/i.test(lower)) {
-      const hint = String(prior).match(/\*\*([^*]+)\*\*/)?.[1] || cleaned;
-      topics.add(hint);
-      topics.add(`${hint} details`);
-      topics.add(`${hint} examples`);
+    // Follow-ups like "why?" / "tell me more" reuse prior topic
+    if (
+      prior &&
+      (/^(yes|yeah|yep|sure|ok|okay|more|go deeper|why|how|and|also|what about|tell me more|continue|elaborate|wait why|why though)\b/i.test(lower) ||
+        topic.length < 12)
+    ) {
+      const hint =
+        String(prior).match(/\*\*([^*]{3,60})\*\*/)?.[1] ||
+        String(prior).match(/about\s+\*\*([^*]+)\*\*/i)?.[1];
+      if (hint) topic = hint.trim();
     }
 
-    return [...topics].filter((t) => t && t.length > 1).slice(0, 5);
+    const queries = new Set();
+    queries.add(topic);
+    queries.add(raw.replace(/[?!]+$/g, "").slice(0, 100));
+
+    if (intent === "who") {
+      queries.add(`${topic} inventor`);
+      queries.add(`${topic} biography`);
+      queries.add(`who invented ${topic}`);
+    } else if (intent === "why") {
+      queries.add(`why ${topic}`);
+      queries.add(`${topic} explanation`);
+      queries.add(`${topic} cause`);
+      // sky blue special-case style helpers via generic science phrasing
+      if (/sky/.test(topic) && /blue/.test(topic)) queries.add("Rayleigh scattering");
+    } else if (intent === "how") {
+      queries.add(`how ${topic} works`);
+      queries.add(`${topic} process`);
+      queries.add(`${topic} steps`);
+    } else if (intent === "compare") {
+      const vs = raw.match(/difference between\s+(.+?)\s+and\s+(.+?)(?:\?|$)/i) ||
+        raw.match(/(.+?)\s+(?:vs\.?|versus|compared to)\s+(.+?)(?:\?|$)/i);
+      if (vs) {
+        queries.add(vs[1].trim());
+        queries.add(vs[2].replace(/[?!]+$/, "").trim());
+        queries.add(`${vs[1].trim()} vs ${vs[2].replace(/[?!]+$/, "").trim()}`);
+      }
+    } else if (intent === "causes") {
+      queries.add(`${topic} causes`);
+      queries.add(`causes of ${topic}`);
+    } else if (intent === "when") {
+      queries.add(`${topic} date`);
+      queries.add(`${topic} year`);
+    } else if (intent === "where") {
+      queries.add(`${topic} location`);
+    } else if (intent === "examples") {
+      queries.add(`${topic} examples`);
+    } else {
+      queries.add(`${topic} overview`);
+      queries.add(`what is ${topic}`);
+    }
+
+    if (/history|war|revolution|empire|civilization/i.test(raw)) queries.add(`${topic} history`);
+
+    return {
+      intent,
+      topic,
+      queries: [...queries].filter((t) => t && t.length > 1).slice(0, 5),
+    };
+  }
+
+  function buildSubtopics(question, prior) {
+    return understandQuestion(question, prior).queries;
+  }
+
+  function scoreHit(hit, question, topic) {
+    const qWords = `${question} ${topic}`
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !/^(the|and|for|with|that|this|what|who|why|how|when|where|does|did|are|was|can|you|please|about|from|into)$/.test(w));
+    const hay = `${hit.title || ""} ${hit.extract || hit.text || ""}`.toLowerCase();
+    let score = 0;
+    qWords.forEach((w) => {
+      if (hay.includes(w)) score += 2;
+      if ((hit.title || "").toLowerCase().includes(w)) score += 3;
+    });
+    // Prefer Wikipedia encyclopedia pages over tangential matches
+    if (hit.source === "Wikipedia") score += 1;
+    // Penalize very short / empty extracts
+    const len = (hit.extract || hit.text || "").length;
+    if (len > 120) score += 2;
+    if (len > 300) score += 1;
+    // Soft penalty for obvious off-topic entertainment/studio pages when asking science
+    if (/\b(studio|television|film|song|album|video game)\b/i.test(hit.title || "") && /\b(why|how|science|sky|gravity|atom|cell)\b/i.test(question)) {
+      score -= 4;
+    }
+    return score;
+  }
+
+  function rankHits(hits, question, topic) {
+    return [...hits]
+      .map((h) => ({ ...h, score: scoreHit(h, question, topic) }))
+      .sort((a, b) => b.score - a.score);
   }
 
   async function wikiMultiSearch(query) {
     try {
       const url =
-        "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=5&prop=extracts|info&exintro=1&explaintext=1&exchars=500&inprop=url&format=json&origin=*&gsrsearch=" +
+        "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&exchars=700&inprop=url&format=json&origin=*&gsrsearch=" +
         encodeURIComponent(query);
       const res = await fetch(url);
       if (!res.ok) return [];
@@ -4352,6 +4447,25 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         }));
     } catch {
       return [];
+    }
+  }
+
+  async function wikiDeepSummary(title) {
+    try {
+      const res = await fetch(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title.replace(/ /g, "_"))
+      );
+      if (!res.ok) return null;
+      const sum = await res.json();
+      return {
+        title: sum.title || title,
+        extract: sum.extract || "",
+        url: sum.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+        source: "Wikipedia",
+        description: sum.description || "",
+      };
+    } catch {
+      return null;
     }
   }
 
@@ -4483,12 +4597,28 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   }
 
   async function searchInternet(question, priorContent) {
-    const subtopics = buildSubtopics(question, priorContent || "");
-    // Prefer fewer, sharper queries so each gets rich results
-    const queries = subtopics.slice(0, 4);
+    const understood = understandQuestion(question, priorContent || "");
+    const queries = understood.queries.slice(0, 4);
     const research = await researchSubtopics(queries);
-    const hits = collectWebHits(research);
-    return { queries, research, hits };
+    let hits = rankHits(collectWebHits(research), question, understood.topic);
+
+    // Deepen the best Wikipedia hit for a fuller answer
+    const bestWiki = hits.find((h) => h.source === "Wikipedia" && h.title);
+    if (bestWiki) {
+      const deep = await wikiDeepSummary(bestWiki.title);
+      if (deep?.extract && deep.extract.length >= (bestWiki.extract || "").length) {
+        hits = rankHits(
+          [
+            { ...bestWiki, ...deep, query: bestWiki.query || understood.topic },
+            ...hits.filter((h) => h.url !== bestWiki.url),
+          ],
+          question,
+          understood.topic
+        );
+      }
+    }
+
+    return { queries, research, hits, understood };
   }
 
   function trySolveMath(q) {
@@ -4631,51 +4761,93 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return t;
   }
 
-  function synthesizeFromResearch(question, research, mathBlock, priorTurns, webHits = []) {
-    const hits = webHits.length ? webHits : collectWebHits(research);
-    const overview = hits[0]?.extract || "";
+  function firstSentences(text, max = 2) {
+    if (!text) return "";
+    const parts = text
+      .replace(/\s+/g, " ")
+      .match(/[^.!?]+[.!?]+|[^.!?]+$/g);
+    if (!parts) return text.trim();
+    return parts.slice(0, max).join(" ").trim();
+  }
+
+  function craftDirectAnswer(intent, topic, bestHit) {
+    const extract = humanizeFact(bestHit?.extract || bestHit?.text || "");
+    const title = bestHit?.title || topic;
+    if (!extract) return "";
+    const lead = firstSentences(extract, 2);
+    const rest = extract.length > lead.length + 20 ? extract : "";
+
+    if (intent === "who") {
+      return `**Short answer:** ${lead}\n\n${rest ? `**More detail:** ${rest}\n\n` : ""}Source topic: **${title}**.`;
+    }
+    if (intent === "when") {
+      const year = extract.match(
+        /\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*\d{3,4}|\d{3,4})\b/
+      );
+      return year
+        ? `**Short answer:** **${year[1].trim()}**.\n\n${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`
+        : `**Short answer:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+    }
+    if (intent === "where") {
+      return `**Short answer:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+    }
+    if (intent === "why" || intent === "how" || intent === "causes") {
+      const label = intent === "how" ? "How it works" : intent === "causes" ? "Main causes" : "Short answer";
+      return `**${label}:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+    }
+    if (intent === "compare") {
+      return `**Here's the difference:**\n\n${extract}`;
+    }
+    if (intent === "define") {
+      return `**${title}:** ${lead}${rest ? `\n\n${rest}` : ""}`;
+    }
+    return `**Answer:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+  }
+
+  function synthesizeFromResearch(question, research, mathBlock, priorTurns, webHits = [], understood = null) {
+    const info = understood || understandQuestion(question, "");
+    const hits = rankHits(webHits.length ? webHits : collectWebHits(research), question, info.topic)
+      .filter((h) => (h.score == null ? true : h.score > 0) || (h.extract || h.text));
+    const best = hits[0];
+    const overview = best?.extract || best?.text || "";
     const nameBit = aiUserName ? `, ${aiUserName}` : "";
-    const openers = [
-      `Okay${nameBit}, I searched the internet for that. Here's what I found:`,
-      `Alright${nameBit} — I looked this up. Basically:`,
-      `Good question${nameBit}. From what I found online:`,
-      `Yeah I got you${nameBit}. After checking the web:`,
-    ];
-    const opener = openers[Math.min(priorTurns, openers.length - 1) % openers.length];
 
     let out = "";
     if (mathBlock) {
       out += `${mathBlock}\n`;
-      if (overview) out += `\nI also checked online — ${humanizeFact(overview)}\n`;
+      if (overview) out += `\nRelated context from the web: ${firstSentences(overview, 2)}\n`;
     } else if (overview) {
-      out += `${opener}\n\n**${hits[0].title}** — ${humanizeFact(overview)}\n`;
+      out += `Okay${nameBit} — I understood your question as asking about **${info.topic}** (${info.intent}). I searched the internet and here's a solid answer:\n\n`;
+      out += `${craftDirectAnswer(info.intent, info.topic, best)}\n`;
     } else {
-      out += `I searched the web for that${nameBit}, but didn't get a clean hit. Try asking with clearer keywords (like a topic name or the exact homework question).\n`;
+      out += `I searched the web for **${info.topic}**${nameBit}, but didn't get a strong match. Try rephrasing with the main topic words (for example: “why is the sky blue” or “causes of World War I”).\n`;
     }
 
-    // Extra web findings
-    hits.slice(1, 4).forEach((h) => {
-      const blurb = humanizeFact(h.extract || h.text || "");
-      if (!blurb || blurb === overview) return;
-      out += `\nFrom **${h.title}**: ${blurb.slice(0, 320)}${blurb.length > 320 ? "…" : ""}\n`;
-    });
+    // Supporting points from other good hits
+    const support = hits.slice(1, 4).filter((h) => (h.score == null || h.score >= 3));
+    if (support.length && overview) {
+      out += `\n**Also useful:**\n`;
+      support.forEach((h) => {
+        const blurb = firstSentences(humanizeFact(h.extract || h.text || ""), 1);
+        if (!blurb) return;
+        out += `- **${h.title}**: ${blurb}\n`;
+      });
+    }
 
     if (/study plan|how should i study|revise|review for|stressed about a .*test/i.test(question)) {
       out +=
-        `\nIf you want a chill plan: 20 min reading + 5 facts from memory, 15 min explain it out loud, 15 min practice, 10 min review mistakes. Want a quiz after?\n`;
+        `\n**Quick study plan:** 20 min read + write 5 facts from memory, 15 min explain out loud, 15 min practice, 10 min review mistakes.\n`;
     }
 
     if (hits.length) {
-      out += `\n**Sources from the web:**\n`;
+      out += `\n**Sources I used:**\n`;
       hits.slice(0, 5).forEach((h, i) => {
-        out += `${i + 1}. [${h.title}](${h.url}) — ${h.source || "Web"}\n`;
+        out += `${i + 1}. [${h.title}](${h.url})\n`;
       });
     }
 
     if (overview || mathBlock) {
-      out += priorTurns >= 3
-        ? `\nStill with you — want this simpler, deeper, or turned into practice?\n`
-        : `\nWant me to dig deeper on any part of that?\n`;
+      out += `\nIf any part is still fuzzy, ask me like: “explain that simpler” or “give an example.”\n`;
     }
 
     return {
@@ -4707,8 +4879,8 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       }));
     const nameLine = aiUserName ? `Their name is ${aiUserName}. ` : "";
     const userPayload = brief
-      ? `${question}\n\n(Some facts I looked up — weave them in naturally, don't sound like a report):\n${brief}\n\nReply like a real person texting a friend. Short paragraphs. End with 2-3 casual follow-up questions.`
-      : `${question}\n\nReply like a real person. Keep the vibe natural.`;
+      ? `QUESTION: ${question}\n\nINTERNET RESULTS:\n${brief}\n\nWrite a solid answer that directly addresses the question. Lead with the answer, then explain. Use the results. Include source links. Sound human.`
+      : `QUESTION: ${question}\n\nReply like a real person. Keep the vibe natural.`;
     const messages = [
       { role: "system", content: `${AI_SYSTEM}\n${nameLine}` },
       ...history.slice(0, -1),
@@ -4722,7 +4894,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         "HTTP-Referer": location.origin || "https://study-with-games.local",
         "X-Title": "study with games AI Mode",
       },
-      body: JSON.stringify({ model, messages, temperature: 0.75 }),
+      body: JSON.stringify({ model, messages, temperature: 0.55 }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -4771,13 +4943,17 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       }
 
       const lastAssistant = [...aiHistory].reverse().find((m) => m.role === "assistant");
-      typing.textContent = "Searching the internet…";
+      const understoodPreview = understandQuestion(q, lastAssistant?.content || "");
+      typing.textContent = `Got it — looking up “${understoodPreview.topic.slice(0, 48)}”…`;
 
       const mathBlock = trySolveMath(q);
-      const { queries, research, hits } = await searchInternet(q, lastAssistant?.content || "");
+      const { queries, research, hits, understood } = await searchInternet(
+        q,
+        lastAssistant?.content || ""
+      );
       typing.textContent = hits.length
-        ? `Found ${hits.length} result${hits.length === 1 ? "" : "s"} — writing your answer…`
-        : "Putting an answer together…";
+        ? `Found solid sources — writing your answer…`
+        : "Writing the best answer I can…";
 
       const brief = researchBriefText(q, queries, research, mathBlock, hits);
 
@@ -4788,17 +4964,31 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         try {
           content = await askLlmChat(
             q,
-            `${brief}\nAnswer using these internet results. Speak naturally and include the source links.`
+            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nGive a solid direct answer.`
           );
           followups = extractFollowups(content, q, research);
         } catch (err) {
-          const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length, hits);
-          content = `${local.content}\n\n(Quick note: my smarter chat brain hiccuped — ${err.message})`;
+          const local = synthesizeFromResearch(
+            q,
+            research,
+            mathBlock,
+            aiHistory.length,
+            hits,
+            understood
+          );
+          content = local.content;
           followups = local.followups;
           sources = local.sources || sources;
         }
       } else {
-        const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length, hits);
+        const local = synthesizeFromResearch(
+          q,
+          research,
+          mathBlock,
+          aiHistory.length,
+          hits,
+          understood
+        );
         content = local.content;
         followups = local.followups;
         sources = local.sources || sources;
