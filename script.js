@@ -72,7 +72,7 @@
       rarity: "legendary",
       cost: RARITY_COST.legendary,
       desc: "Old-school run and jump side-scroller.",
-      help: "← → move · ↑/Space jump · hit ?/bricks from below · 5 lives · flag → World 2",
+      help: "← → move · ↑/Space jump · Z/X fire · hit ? blocks for abilities · 5 lives · flag → World 2",
     },
   ];
 
@@ -317,6 +317,16 @@
     questPanelCompleted: document.getElementById("quest-panel-completed"),
     questTabs: [...document.querySelectorAll(".quest-tab")],
     resetProgress: document.getElementById("reset-progress"),
+    settingsOpen: document.getElementById("settings-open"),
+    settingsModal: document.getElementById("settings-modal"),
+    settingsClose: document.getElementById("settings-close"),
+    settingBrightness: document.getElementById("setting-brightness"),
+    settingBrightnessVal: document.getElementById("setting-brightness-val"),
+    settingSound: document.getElementById("setting-sound"),
+    settingSoundVal: document.getElementById("setting-sound-val"),
+    settingMusic: document.getElementById("setting-music"),
+    settingMusicVal: document.getElementById("setting-music-val"),
+    settingMute: document.getElementById("setting-mute"),
   };
 
   function todayKey() {
@@ -373,7 +383,19 @@
     completedLog: Array.isArray(loaded?.completedLog) ? loaded.completedLog : [],
     streakDays: streakInit.streakDays,
     lastActiveDate: streakInit.lastActiveDate,
+    settings: {
+      brightness: clampNum(loaded?.settings?.brightness, 50, 150, 100),
+      soundVolume: clampNum(loaded?.settings?.soundVolume, 0, 100, 80),
+      musicVolume: clampNum(loaded?.settings?.musicVolume, 0, 100, 70),
+      muted: Boolean(loaded?.settings?.muted),
+    },
   };
+
+  function clampNum(v, min, max, fallback) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, n));
+  }
 
   function normalizeQuests(quests) {
     if (!Array.isArray(quests)) return [];
@@ -394,13 +416,75 @@
   let running = false;
   let toastTimer = null;
   let audioCtx = null;
+  let soundBus = null;
+  let musicBus = null;
 
   function getAudioCtx() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
-    if (!audioCtx) audioCtx = new AC();
+    if (!audioCtx) {
+      audioCtx = new AC();
+      soundBus = audioCtx.createGain();
+      musicBus = audioCtx.createGain();
+      soundBus.connect(audioCtx.destination);
+      musicBus.connect(audioCtx.destination);
+      applyAudioSettings();
+    }
     if (audioCtx.state === "suspended") audioCtx.resume();
     return audioCtx;
+  }
+
+  function soundOut() {
+    getAudioCtx();
+    return soundBus || audioCtx?.destination;
+  }
+
+  function musicOut() {
+    getAudioCtx();
+    return musicBus || audioCtx?.destination;
+  }
+
+  function applyAudioSettings() {
+    if (!soundBus || !musicBus || !audioCtx) return;
+    const muted = state.settings.muted;
+    const s = muted ? 0 : state.settings.soundVolume / 100;
+    const m = muted ? 0 : state.settings.musicVolume / 100;
+    const t = audioCtx.currentTime;
+    soundBus.gain.cancelScheduledValues(t);
+    musicBus.gain.cancelScheduledValues(t);
+    soundBus.gain.setValueAtTime(s, t);
+    musicBus.gain.setValueAtTime(m, t);
+  }
+
+  function applyBrightnessSetting() {
+    const b = state.settings.brightness / 100;
+    document.documentElement.style.setProperty("--game-brightness", String(b));
+  }
+
+  function syncSettingsUI() {
+    const s = state.settings;
+    if (els.settingBrightness) {
+      els.settingBrightness.value = String(s.brightness);
+      els.settingBrightnessVal.textContent = `${s.brightness}%`;
+    }
+    if (els.settingSound) {
+      els.settingSound.value = String(s.soundVolume);
+      els.settingSoundVal.textContent = `${s.soundVolume}%`;
+    }
+    if (els.settingMusic) {
+      els.settingMusic.value = String(s.musicVolume);
+      els.settingMusicVal.textContent = `${s.musicVolume}%`;
+    }
+    if (els.settingMute) els.settingMute.checked = s.muted;
+  }
+
+  function openSettingsModal() {
+    syncSettingsUI();
+    els.settingsModal.hidden = false;
+  }
+
+  function closeSettingsModal() {
+    els.settingsModal.hidden = true;
   }
 
   function tone(ctx, { freq, type = "sine", start, dur, gain = 0.08, attack = 0.01, release = 0.08 }) {
@@ -412,7 +496,7 @@
     g.gain.exponentialRampToValueAtTime(gain, start + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, start + Math.max(attack + 0.01, dur - release));
     osc.connect(g);
-    g.connect(ctx.destination);
+    g.connect(soundOut());
     osc.start(start);
     osc.stop(start + dur + 0.02);
   }
@@ -613,6 +697,7 @@
         completedLog: state.completedLog,
         streakDays: state.streakDays,
         lastActiveDate: state.lastActiveDate,
+        settings: state.settings,
       })
     );
   }
@@ -643,6 +728,15 @@
     state.completedLog = [];
     state.streakDays = 1;
     state.lastActiveDate = todayKey();
+    state.settings = {
+      brightness: 100,
+      soundVolume: 80,
+      musicVolume: 70,
+      muted: false,
+    };
+    applyBrightnessSetting();
+    applyAudioSettings();
+    syncSettingsUI();
 
     remaining = 25 * 60;
     totalForMode = 25 * 60;
@@ -1712,8 +1806,8 @@
     let levelEnd = 4200;
     let flagX = levelEnd - 180;
     let lives = 5;
-    let player, goombas, pipes, pits, platforms, coins, blocks, movers, powerups, particles;
-    let scroll, score, over, won, clearPending, last, jumpBuf, invuln, starTimer;
+    let player, goombas, pipes, pits, platforms, coins, blocks, movers, powerups, particles, fireballs;
+    let scroll, score, over, won, clearPending, last, jumpBuf, invuln, starTimer, fireCooldown;
     let flag;
     let music = { nodes: [], stopAt: 0, timer: 0 };
 
@@ -1749,7 +1843,7 @@
           g.gain.exponentialRampToValueAtTime(0.035, t + 0.02);
           g.gain.exponentialRampToValueAtTime(0.0001, t + dur - 0.02);
           osc.connect(g);
-          g.connect(ctx.destination);
+          g.connect(musicOut());
           osc.start(t);
           osc.stop(t + dur + 0.02);
           music.nodes.push(osc);
@@ -1762,7 +1856,7 @@
           bg.gain.exponentialRampToValueAtTime(0.02, t + 0.02);
           bg.gain.exponentialRampToValueAtTime(0.0001, t + dur - 0.02);
           bass.connect(bg);
-          bg.connect(ctx.destination);
+          bg.connect(musicOut());
           bass.start(t);
           bass.stop(t + dur + 0.02);
           music.nodes.push(bass);
@@ -1786,6 +1880,53 @@
       player.h = big ? 36 : 28;
       player.w = big ? 22 : 20;
       if (big && !wasBig) player.y -= 8;
+      if (!big) player.fire = false;
+    }
+
+    function grantAbility(type) {
+      if (type === "mushroom") {
+        setPlayerSize(true);
+        score += 1000;
+        showToast("Super Mushroom!");
+      } else if (type === "fireflower") {
+        setPlayerSize(true);
+        player.fire = true;
+        score += 1000;
+        showToast("Fire Flower!");
+      } else if (type === "star") {
+        starTimer = 420;
+        score += 1000;
+        showToast("Star power!");
+      }
+      setScore(score);
+    }
+
+    function shootFire() {
+      if (!player.fire || over || won || flag.claimed || fireCooldown > 0) return;
+      const live = fireballs.filter((f) => !f.dead).length;
+      if (live >= 2) return;
+      fireballs.push({
+        x: scroll + player.x + (player.facing > 0 ? player.w : 0),
+        y: player.y + player.h * 0.45,
+        vx: player.facing * 5.2,
+        vy: -2.2,
+        r: 6,
+        life: 90,
+        dead: false,
+      });
+      fireCooldown = 12;
+      const ctx = getAudioCtx();
+      if (ctx) {
+        tone(ctx, {
+          freq: 620,
+          type: "square",
+          start: ctx.currentTime,
+          dur: 0.08,
+          gain: 0.04,
+          attack: 0.005,
+          release: 0.05,
+        });
+      }
     }
 
     function resetRun() {
@@ -1807,10 +1948,13 @@
       player.vx = 0;
       player.onGround = true;
       setPlayerSize(false);
+      player.fire = false;
       scroll = 0;
       invuln = 90;
       starTimer = 0;
+      fireCooldown = 0;
       powerups = [];
+      fireballs = [];
       flag.sliding = false;
       flag.claimed = false;
       flag.playerFlag = false;
@@ -1819,6 +1963,12 @@
 
     function loseLife() {
       if (invuln > 0 || starTimer > 0 || flag.claimed) return;
+      if (player.fire) {
+        player.fire = false;
+        invuln = 90;
+        showToast("Lost fire power");
+        return;
+      }
       if (player.big) {
         setPlayerSize(false);
         invuln = 90;
@@ -1846,11 +1996,13 @@
       blocks = [];
       movers = [];
       powerups = [];
+      fireballs = [];
       particles = [];
       scroll = 0;
       jumpBuf = 0;
       invuln = 0;
       starTimer = 0;
+      fireCooldown = 0;
       clearPending = false;
       won = false;
       player = {
@@ -1862,6 +2014,7 @@
         h: 28,
         onGround: true,
         big: false,
+        fire: false,
         facing: 1,
       };
       flag = {
@@ -1899,46 +2052,66 @@
     }
 
     function buildLevel1() {
-      [[520, 70], [980, 100], [1400, 80], [1880, 110], [2400, 90], [2900, 120], [3350, 85], [3700, 95]]
+      [[480, 70], [920, 100], [1480, 80], [1960, 110], [2520, 90], [3040, 120], [3480, 85], [3820, 95]]
         .forEach(([x, h]) => pipes.push({ x, y: GROUND - h, w: 44, h }));
-      [[700, 70], [1100, 90], [1600, 80], [2100, 100], [2650, 85], [3100, 95], [3550, 75]]
+      [[680, 70], [1180, 90], [1680, 80], [2220, 100], [2780, 85], [3300, 95], [3680, 75]]
         .forEach(([x, w]) => pits.push({ x, w }));
 
-      // classic block rows with ? and bricks
-      for (let i = 0; i < 5; i++) addBrick(420 + i * TILE, GROUND - 96, true);
-      addQ(420 + 2 * TILE, GROUND - 96, "mushroom");
-      addQ(780, GROUND - 96, "coin");
-      addBrick(808, GROUND - 96, true);
-      addQ(836, GROUND - 96, "mushroom");
-      addBrick(864, GROUND - 96, true);
-      addQ(892, GROUND - 96, "star");
+      // floating ? / brick patterns (classic side-scroll spacing)
+      addQ(360, GROUND - 112, "power");
+      addBrick(520, GROUND - 112, true);
+      addQ(548, GROUND - 112, "coin");
+      addBrick(576, GROUND - 112, true);
+      addQ(604, GROUND - 112, "power");
+      addBrick(632, GROUND - 112, true);
 
-      addQ(1200, GROUND - 120, "coin");
-      addBrick(1228, GROUND - 120, true);
-      addBrick(1256, GROUND - 120, true);
-      addQ(1284, GROUND - 120, "mushroom");
-      for (let i = 0; i < 4; i++) addBrick(1500 + i * TILE, GROUND - 88, true);
-      addQ(1750, GROUND - 130, "coin");
-      addBrick(1778, GROUND - 130, true);
-      addQ(1806, GROUND - 130, "mushroom");
-      addBrick(1834, GROUND - 130, true);
-      addQ(2200, GROUND - 100, "coin");
-      for (let i = 0; i < 3; i++) addBrick(2228 + i * TILE, GROUND - 100, true);
-      addQ(2550, GROUND - 120, "star");
-      for (let i = 0; i < 4; i++) addBrick(2578 + i * TILE, GROUND - 120, true);
-      addQ(3000, GROUND - 96, "mushroom");
-      addBrick(3028, GROUND - 96, true);
-      addQ(3450, GROUND - 110, "coin");
-      for (let i = 0; i < 3; i++) addBrick(3478 + i * TILE, GROUND - 110, true);
+      addQ(760, GROUND - 168, "star");
 
-      [450, 600, 860, 1050, 1280, 1550, 1720, 1950, 2300, 2480, 2750, 2950, 3200, 3400, 3600, 3900]
+      addBrick(1020, GROUND - 96, true);
+      addBrick(1048, GROUND - 96, true);
+      addQ(1076, GROUND - 96, "power");
+      addBrick(1104, GROUND - 96, true);
+      addBrick(1132, GROUND - 96, true);
+      addQ(1076, GROUND - 176, "coin");
+
+      addQ(1360, GROUND - 120, "power");
+      addQ(1440, GROUND - 120, "coin");
+      addQ(1520, GROUND - 120, "power");
+
+      for (let i = 0; i < 3; i++) addBrick(1780 + i * TILE, GROUND - 88, true);
+      addQ(1864, GROUND - 152, "power");
+      addBrick(1892, GROUND - 152, true);
+      addQ(1920, GROUND - 152, "star");
+
+      addBrick(2140, GROUND - 104, true);
+      addQ(2168, GROUND - 104, "coin");
+      addBrick(2196, GROUND - 104, true);
+      addQ(2224, GROUND - 104, "power");
+      addBrick(2252, GROUND - 104, true);
+
+      addQ(2460, GROUND - 180, "power");
+      for (let i = 0; i < 2; i++) addBrick(2680 + i * TILE, GROUND - 96, true);
+      addQ(2736, GROUND - 96, "coin");
+      addQ(2736, GROUND - 168, "power");
+
+      addBrick(2980, GROUND - 112, true);
+      addQ(3008, GROUND - 112, "power");
+      addBrick(3036, GROUND - 112, true);
+      addQ(3200, GROUND - 140, "star");
+      addQ(3380, GROUND - 100, "coin");
+      addBrick(3408, GROUND - 100, true);
+      addQ(3436, GROUND - 100, "power");
+      addBrick(3620, GROUND - 128, true);
+      addQ(3648, GROUND - 128, "power");
+
+      [420, 580, 840, 1000, 1240, 1500, 1700, 1900, 2280, 2440, 2700, 2920, 3160, 3420, 3600, 3880]
         .forEach((x, i) => goombas.push({ x, y: GROUND - 20, w: 22, h: 20, vx: i % 2 === 0 ? -0.9 : 0.9, alive: true }));
-      [800, 1220, 1780, 2580, 3480].forEach((x) => {
-        goombas.push({ x, y: GROUND - 148, w: 22, h: 20, vx: -0.7, alive: true });
+      [1076, 1864, 2224, 2736, 3436].forEach((x) => {
+        goombas.push({ x, y: GROUND - 140, w: 22, h: 20, vx: -0.7, alive: true });
       });
 
       for (let i = 0; i < 36; i++) {
-        coins.push({ x: 380 + i * 100, y: GROUND - 55 - (i % 3) * 24, r: 7, taken: false });
+        coins.push({ x: 340 + i * 100, y: GROUND - 55 - (i % 3) * 24, r: 7, taken: false });
       }
 
       for (let step = 0; step < 6; step++) {
@@ -1949,35 +2122,56 @@
     }
 
     function buildLevel2() {
-      // harder: more pits, taller pipes, movers
-      [[480, 90], [900, 120], [1350, 100], [1800, 130], [2300, 110], [2800, 140], [3300, 100], [3900, 120]]
+      [[460, 90], [880, 120], [1320, 100], [1780, 130], [2280, 110], [2760, 140], [3280, 100], [3860, 120]]
         .forEach(([x, h]) => pipes.push({ x, y: GROUND - h, w: 48, h }));
-      [[650, 90], [1050, 100], [1500, 110], [2000, 120], [2500, 95], [3050, 110], [3600, 100]]
+      [[640, 90], [1080, 100], [1540, 110], [2040, 120], [2540, 95], [3100, 110], [3640, 100]]
         .forEach(([x, w]) => pits.push({ x, w }));
 
-      for (let i = 0; i < 6; i++) addBrick(560 + i * TILE, GROUND - 100, true);
-      addQ(560 + 2 * TILE, GROUND - 100, "mushroom");
-      addQ(560 + 4 * TILE, GROUND - 100, "star");
-      addQ(1180, GROUND - 130, "mushroom");
-      for (let i = 0; i < 5; i++) addBrick(1600 + i * TILE, GROUND - 110, true);
-      addQ(2100, GROUND - 140, "coin");
-      addQ(2700, GROUND - 120, "mushroom");
-      for (let i = 0; i < 4; i++) addBrick(3200 + i * TILE, GROUND - 100, true);
-      addQ(3500, GROUND - 130, "star");
+      addQ(380, GROUND - 120, "power");
+      addBrick(520, GROUND - 100, true);
+      addQ(548, GROUND - 100, "power");
+      addBrick(576, GROUND - 100, true);
+      addQ(604, GROUND - 100, "star");
+      addBrick(632, GROUND - 100, true);
+      addQ(548, GROUND - 180, "coin");
 
-      // moving structures
-      movers.push({ x: 750, y: GROUND - 90, w: TILE * 3, h: 16, ox: 750, oy: GROUND - 90, axis: "x", min: 750, max: 950, speed: 1.2, dir: 1 });
-      movers.push({ x: 1250, y: GROUND - 70, w: TILE * 2, h: 16, ox: 1250, oy: GROUND - 70, axis: "y", min: GROUND - 160, max: GROUND - 60, speed: 1.0, dir: -1 });
-      movers.push({ x: 1900, y: GROUND - 100, w: TILE * 3, h: 16, ox: 1900, oy: GROUND - 100, axis: "x", min: 1850, max: 2150, speed: 1.5, dir: 1 });
-      movers.push({ x: 2450, y: GROUND - 80, w: TILE * 2, h: 16, ox: 2450, oy: GROUND - 80, axis: "y", min: GROUND - 170, max: GROUND - 55, speed: 1.3, dir: 1 });
-      movers.push({ x: 2950, y: GROUND - 110, w: TILE * 3, h: 16, ox: 2950, oy: GROUND - 110, axis: "x", min: 2900, max: 3200, speed: 1.6, dir: -1 });
-      movers.push({ x: 3700, y: GROUND - 90, w: TILE * 2, h: 16, ox: 3700, oy: GROUND - 90, axis: "y", min: GROUND - 150, max: GROUND - 50, speed: 1.4, dir: -1 });
+      addQ(980, GROUND - 140, "power");
+      addQ(1120, GROUND - 100, "coin");
+      addBrick(1148, GROUND - 100, true);
+      addQ(1176, GROUND - 100, "power");
+
+      for (let i = 0; i < 4; i++) addBrick(1480 + i * TILE, GROUND - 88, true);
+      addQ(1564, GROUND - 160, "power");
+      addQ(1700, GROUND - 120, "star");
+
+      addBrick(2020, GROUND - 112, true);
+      addQ(2048, GROUND - 112, "power");
+      addBrick(2076, GROUND - 112, true);
+      addQ(2240, GROUND - 168, "coin");
+      addQ(2480, GROUND - 120, "power");
+      addBrick(2508, GROUND - 120, true);
+      addQ(2536, GROUND - 120, "power");
+
+      addQ(2880, GROUND - 140, "star");
+      for (let i = 0; i < 3; i++) addBrick(3080 + i * TILE, GROUND - 96, true);
+      addQ(3164, GROUND - 168, "power");
+      addQ(3400, GROUND - 120, "coin");
+      addQ(3560, GROUND - 150, "power");
+      addBrick(3720, GROUND - 108, true);
+      addQ(3748, GROUND - 108, "power");
+
+      movers.push({ x: 740, y: GROUND - 90, w: TILE * 3, h: 16, ox: 740, oy: GROUND - 90, axis: "x", min: 740, max: 960, speed: 1.2, dir: 1 });
+      movers.push({ x: 1260, y: GROUND - 70, w: TILE * 2, h: 16, ox: 1260, oy: GROUND - 70, axis: "y", min: GROUND - 160, max: GROUND - 60, speed: 1.0, dir: -1 });
+      movers.push({ x: 1880, y: GROUND - 100, w: TILE * 3, h: 16, ox: 1880, oy: GROUND - 100, axis: "x", min: 1820, max: 2140, speed: 1.5, dir: 1 });
+      movers.push({ x: 2420, y: GROUND - 80, w: TILE * 2, h: 16, ox: 2420, oy: GROUND - 80, axis: "y", min: GROUND - 170, max: GROUND - 55, speed: 1.3, dir: 1 });
+      movers.push({ x: 2920, y: GROUND - 110, w: TILE * 3, h: 16, ox: 2920, oy: GROUND - 110, axis: "x", min: 2860, max: 3180, speed: 1.6, dir: -1 });
+      movers.push({ x: 3680, y: GROUND - 90, w: TILE * 2, h: 16, ox: 3680, oy: GROUND - 90, axis: "y", min: GROUND - 150, max: GROUND - 50, speed: 1.4, dir: -1 });
 
       [500, 700, 950, 1150, 1400, 1650, 1950, 2200, 2550, 2750, 3000, 3250, 3550, 3850, 4100]
         .forEach((x, i) => goombas.push({ x, y: GROUND - 20, w: 22, h: 20, vx: (i % 2 ? 1.1 : -1.1), alive: true }));
 
       for (let i = 0; i < 40; i++) {
-        coins.push({ x: 400 + i * 100, y: GROUND - 60 - (i % 4) * 22, r: 7, taken: false });
+        coins.push({ x: 360 + i * 100, y: GROUND - 60 - (i % 4) * 22, r: 7, taken: false });
       }
 
       for (let step = 0; step < 7; step++) {
@@ -1997,26 +2191,62 @@
       if (block.kind === "q" && !block.used) {
         block.used = true;
         block.kind = "used";
-        const type = block.contains || "coin";
+        let type = block.contains || "coin";
+        // Mario-style: power block → mushroom when small, fire flower when big
+        if (type === "power" || type === "mushroom") {
+          type = player.big || player.fire ? "fireflower" : "mushroom";
+        }
         if (type === "coin") {
           score += 200;
           setScore(score);
           particles.push({ x: block.x + 14, y: block.y, vy: -3, life: 20, kind: "coin" });
+          const ctx = getAudioCtx();
+          if (ctx) {
+            tone(ctx, {
+              freq: 988,
+              type: "square",
+              start: ctx.currentTime,
+              dur: 0.12,
+              gain: 0.045,
+              attack: 0.005,
+              release: 0.08,
+            });
+          }
         } else {
           powerups.push({
             x: block.x + 2,
             y: block.y - 24,
             w: 24,
             h: 24,
-            vx: type === "mushroom" ? 1.1 : 0,
+            vx: type === "mushroom" || type === "fireflower" ? 1.15 : 0,
             vy: -2,
             type,
-            rising: 12,
+            rising: 14,
           });
+          const ctx = getAudioCtx();
+          if (ctx) {
+            tone(ctx, {
+              freq: 330,
+              type: "triangle",
+              start: ctx.currentTime,
+              dur: 0.1,
+              gain: 0.05,
+              attack: 0.005,
+              release: 0.07,
+            });
+            tone(ctx, {
+              freq: 520,
+              type: "square",
+              start: ctx.currentTime + 0.08,
+              dur: 0.14,
+              gain: 0.04,
+              attack: 0.005,
+              release: 0.08,
+            });
+          }
         }
       } else if (block.kind === "brick" && block.breakable) {
         if (player.big) {
-          // shatter
           const idx = platforms.indexOf(block);
           if (idx >= 0) platforms.splice(idx, 1);
           score += 50;
@@ -2071,23 +2301,22 @@
       const y = player.y;
       const flash = invuln > 0 && Math.floor(invuln / 4) % 2 === 0;
       if (flash) return;
-      const hat = starTimer > 0 ? `hsl(${(performance.now() / 8) % 360},90%,55%)` : "#e52521";
-      const body = starTimer > 0 ? `hsl(${(performance.now() / 8 + 40) % 360},90%,60%)` : "#e52521";
-      const overalls = "#3b5fd9";
-      // hat
+      const hat = starTimer > 0
+        ? `hsl(${(performance.now() / 8) % 360},90%,55%)`
+        : player.fire ? "#f0f0f0" : "#e52521";
+      const body = starTimer > 0
+        ? `hsl(${(performance.now() / 8 + 40) % 360},90%,60%)`
+        : player.fire ? "#f4f4f4" : "#e52521";
+      const overalls = player.fire ? "#e52521" : "#3b5fd9";
       gctx.fillStyle = hat;
       gctx.fillRect(x + 2, y + 2, player.w - 2, 8);
       gctx.fillRect(x + (player.facing < 0 ? 0 : 8), y + 6, player.w - 6, 4);
-      // face
       gctx.fillStyle = "#ffe0bd";
       gctx.fillRect(x + 4, y + 10, player.w - 6, 8);
-      // body / shirt
       gctx.fillStyle = body;
       gctx.fillRect(x + 3, y + 18, player.w - 6, player.big ? 8 : 6);
-      // overalls
       gctx.fillStyle = overalls;
       gctx.fillRect(x + 3, y + (player.big ? 26 : 22), player.w - 6, player.big ? 10 : 6);
-      // boots
       gctx.fillStyle = "#6b3a12";
       gctx.fillRect(x + 2, y + player.h - 4, 7, 4);
       gctx.fillRect(x + player.w - 9, y + player.h - 4, 7, 4);
@@ -2194,9 +2423,13 @@
       gctx.fillRect(262, 6, 10, 10);
       gctx.fillStyle = "#ffe0bd";
       gctx.fillRect(264, 9, 6, 4);
+      if (player.fire) {
+        gctx.fillStyle = "#ff7a3c";
+        gctx.fillText("FIRE", 8, 32);
+      }
       if (level === 2) {
         gctx.fillStyle = "#ffd166";
-        gctx.fillText("MOVING STAGE", 8, 32);
+        gctx.fillText("MOVING STAGE", player.fire ? 70 : 8, 32);
       }
     }
 
@@ -2243,24 +2476,49 @@
       });
 
       powerups.forEach((p) => {
+        const sx = p.x - scroll;
         if (p.type === "mushroom") {
           gctx.fillStyle = "#e52521";
-          gctx.fillRect(p.x - scroll, p.y, p.w, 14);
+          gctx.fillRect(sx, p.y, p.w, 14);
           gctx.fillStyle = "#fff";
-          gctx.fillRect(p.x - scroll + 4, p.y + 3, 6, 5);
-          gctx.fillRect(p.x - scroll + 14, p.y + 3, 6, 5);
+          gctx.fillRect(sx + 4, p.y + 3, 6, 5);
+          gctx.fillRect(sx + 14, p.y + 3, 6, 5);
           gctx.fillStyle = "#ffe0bd";
-          gctx.fillRect(p.x - scroll + 4, p.y + 14, p.w - 8, 10);
+          gctx.fillRect(sx + 4, p.y + 14, p.w - 8, 10);
+        } else if (p.type === "fireflower") {
+          gctx.fillStyle = "#2ecc71";
+          gctx.fillRect(sx + 10, p.y + 12, 4, 12);
+          gctx.fillStyle = "#ff5c2e";
+          gctx.beginPath();
+          gctx.ellipse(sx + 12, p.y + 10, 10, 8, 0, 0, Math.PI * 2);
+          gctx.fill();
+          gctx.fillStyle = "#ffd166";
+          gctx.beginPath();
+          gctx.ellipse(sx + 12, p.y + 10, 5, 4, 0, 0, Math.PI * 2);
+          gctx.fill();
         } else {
           gctx.fillStyle = `hsl(${(performance.now() / 6) % 360},90%,60%)`;
           gctx.beginPath();
-          gctx.moveTo(p.x - scroll + 12, p.y);
-          gctx.lineTo(p.x - scroll + 24, p.y + 12);
-          gctx.lineTo(p.x - scroll + 12, p.y + 24);
-          gctx.lineTo(p.x - scroll, p.y + 12);
+          gctx.moveTo(sx + 12, p.y);
+          gctx.lineTo(sx + 24, p.y + 12);
+          gctx.lineTo(sx + 12, p.y + 24);
+          gctx.lineTo(sx, p.y + 12);
           gctx.closePath();
           gctx.fill();
         }
+      });
+
+      fireballs.forEach((f) => {
+        if (f.dead) return;
+        const sx = f.x - scroll;
+        gctx.fillStyle = "#ff7a18";
+        gctx.beginPath();
+        gctx.arc(sx, f.y, f.r, 0, Math.PI * 2);
+        gctx.fill();
+        gctx.fillStyle = "#ffe066";
+        gctx.beginPath();
+        gctx.arc(sx - 1, f.y - 1, f.r * 0.45, 0, Math.PI * 2);
+        gctx.fill();
       });
 
       goombas.forEach((g) => {
@@ -2381,6 +2639,7 @@
       jumpBuf = Math.max(0, jumpBuf - dt);
       if (invuln > 0) invuln -= dt;
       if (starTimer > 0) starTimer -= dt;
+      if (fireCooldown > 0) fireCooldown -= dt;
 
       platforms.forEach((b) => {
         if (b.bump) b.bump = Math.max(0, b.bump - dt);
@@ -2414,6 +2673,7 @@
           player.facing = 1;
         }
         if (keys.has("ArrowUp") || keys.has(" ") || keys.has("w") || keys.has("W")) jump();
+        if (keys.has("z") || keys.has("Z") || keys.has("x") || keys.has("X")) shootFire();
 
         player.x = Math.max(16, Math.min(W - 36, player.x));
         if (player.x > W * 0.45) {
@@ -2486,6 +2746,16 @@
             p.y = GROUND - p.h;
             p.vy = 0;
           }
+          pipes.forEach((pipe) => {
+            if (
+              p.x + p.w > pipe.x &&
+              p.x < pipe.x + pipe.w &&
+              p.y + p.h > pipe.y &&
+              p.y < pipe.y + pipe.h
+            ) {
+              p.vx *= -1;
+            }
+          });
           const sx = p.x - scroll;
           if (
             player.x < sx + p.w &&
@@ -2494,19 +2764,38 @@
             player.y + player.h > p.y
           ) {
             p.dead = true;
-            if (p.type === "mushroom") {
-              setPlayerSize(true);
-              score += 1000;
-              showToast("Super!");
-            } else {
-              starTimer = 420;
-              score += 1000;
-              showToast("Star power!");
-            }
-            setScore(score);
+            grantAbility(p.type);
           }
         });
         powerups = powerups.filter((p) => !p.dead && p.x - scroll > -40);
+
+        fireballs.forEach((f) => {
+          if (f.dead) return;
+          f.vy += 0.35 * dt;
+          f.x += f.vx * dt;
+          f.y += f.vy * dt;
+          f.life -= dt;
+          if (f.y + f.r >= GROUND) {
+            f.y = GROUND - f.r;
+            f.vy = -3.2;
+          }
+          if (f.life <= 0 || f.x - scroll < -20 || f.x - scroll > W + 20) f.dead = true;
+          goombas.forEach((g) => {
+            if (!g.alive || f.dead) return;
+            if (
+              f.x + f.r > g.x &&
+              f.x - f.r < g.x + g.w &&
+              f.y + f.r > g.y &&
+              f.y - f.r < g.y + g.h
+            ) {
+              g.alive = false;
+              f.dead = true;
+              score += 100;
+              setScore(score);
+            }
+          });
+        });
+        fireballs = fireballs.filter((f) => !f.dead);
 
         const poleScreen = flag.x - scroll;
         if (
@@ -2547,6 +2836,7 @@
       },
       onKey(e) {
         if (e.key === "ArrowUp" || e.key === " ") jump();
+        if (e.key === "z" || e.key === "Z" || e.key === "x" || e.key === "X") shootFire();
       },
       onPointer() {
         jumpBuf = 8;
@@ -2691,6 +2981,35 @@
 
   els.resetProgress.addEventListener("click", resetAllProgress);
 
+  els.settingsOpen.addEventListener("click", openSettingsModal);
+  els.settingsClose.addEventListener("click", closeSettingsModal);
+  els.settingsModal.addEventListener("click", (e) => {
+    if (e.target === els.settingsModal) closeSettingsModal();
+  });
+  els.settingBrightness.addEventListener("input", () => {
+    state.settings.brightness = Number(els.settingBrightness.value);
+    els.settingBrightnessVal.textContent = `${state.settings.brightness}%`;
+    applyBrightnessSetting();
+    saveState();
+  });
+  els.settingSound.addEventListener("input", () => {
+    state.settings.soundVolume = Number(els.settingSound.value);
+    els.settingSoundVal.textContent = `${state.settings.soundVolume}%`;
+    applyAudioSettings();
+    saveState();
+  });
+  els.settingMusic.addEventListener("input", () => {
+    state.settings.musicVolume = Number(els.settingMusic.value);
+    els.settingMusicVal.textContent = `${state.settings.musicVolume}%`;
+    applyAudioSettings();
+    saveState();
+  });
+  els.settingMute.addEventListener("change", () => {
+    state.settings.muted = els.settingMute.checked;
+    applyAudioSettings();
+    saveState();
+  });
+
   // Drop legacy save so prior progress/time starts fresh
   localStorage.removeItem("study-with-games-v1");
 
@@ -2702,6 +3021,8 @@
   renderStreak();
   renderStudyStats();
   applyTheme(state.activeTheme);
+  applyBrightnessSetting();
+  syncSettingsUI();
   saveState();
 
   // Unlock Web Audio on first user gesture (browser autoplay policy)
