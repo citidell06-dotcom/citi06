@@ -448,6 +448,8 @@
   let currentMode = "focus";
   let timerId = null;
   let running = false;
+  /** Games stay locked until a focus (study) session finishes */
+  let gamesUnlocked = false;
   let toastTimer = null;
   let audioCtx = null;
   let soundBus = null;
@@ -1485,6 +1487,21 @@
     };
   }
 
+  function lockGames() {
+    gamesUnlocked = false;
+    if (els.gameModal && !els.gameModal.hidden) closeGameModal();
+    if (els.gameShop) renderShop();
+  }
+
+  function unlockGames() {
+    gamesUnlocked = true;
+    renderShop();
+  }
+
+  function canPlayGames() {
+    return gamesUnlocked === true;
+  }
+
   function renderTimer() {
     const { minutes, seconds } = formatTime(remaining);
     els.timerMinutes.textContent = minutes;
@@ -1494,10 +1511,15 @@
 
     const labels = { focus: "Focus", short: "Short Break", long: "Long Break" };
     els.timerMode.textContent = labels[currentMode] || "Focus";
-    els.timerHint.textContent =
-      currentMode === "focus"
-        ? "Finish a focus session for +25 XP."
-        : "Take a break — then jump back in.";
+    if (currentMode === "focus") {
+      els.timerHint.textContent = gamesUnlocked
+        ? "Start focus to lock games again · finish for +25 XP."
+        : "Games stay locked until this study session finishes · +25 XP when done.";
+    } else {
+      els.timerHint.textContent = gamesUnlocked
+        ? "Games unlocked — play a break game, then jump back in."
+        : "Take a break — finish a focus session next time to unlock games.";
+    }
   }
 
   function stopTimer() {
@@ -1517,6 +1539,8 @@
       if (finishedMode === "focus") {
         addStudySeconds(sessionLength);
         addXp(XP_PER_FOCUS, "Focus complete");
+        unlockGames();
+        showToast("Study time's up — games unlocked!");
       } else {
         showToast("Break over — rest time!");
       }
@@ -1530,6 +1554,10 @@
 
   function startTimer() {
     if (running) return;
+    // Starting (or resuming) study locks games until the session completes
+    if (currentMode === "focus") {
+      lockGames();
+    }
     running = true;
     renderTimer();
     timerId = setInterval(tick, 1000);
@@ -1555,6 +1583,11 @@
     els.modeButtons.forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
+
+    // Switching back to Focus locks games for the next study block
+    if (mode === "focus") {
+      lockGames();
+    }
 
     renderTimer();
   }
@@ -1664,24 +1697,33 @@
       actionAttr = `data-equip-theme="${item.id}"`;
       btnClass = "btn-ghost";
     } else if (owned && type === "game") {
-      actionLabel = "Play";
-      actionAttr = `data-play-game="${item.id}"`;
-      btnClass = "btn-primary";
+      if (canPlayGames()) {
+        actionLabel = "Play";
+        actionAttr = `data-play-game="${item.id}"`;
+        btnClass = "btn-primary";
+      } else {
+        actionLabel = "Locked · study first";
+        actionAttr = `data-locked-game="${item.id}"`;
+        btnClass = "btn-ghost";
+        disabled = "disabled";
+      }
     } else if (!canAfford) {
       disabled = "disabled";
     }
 
     const swatch =
       type === "theme" ? `<div class="preview-swatch ${item.id}" aria-hidden="true"></div>` : "";
+    const lockedGame = type === "game" && owned && !canPlayGames();
 
     return `
-      <article class="shop-card${owned ? " owned" : ""}${active ? " active-theme" : ""}">
+      <article class="shop-card${owned ? " owned" : ""}${active ? " active-theme" : ""}${lockedGame ? " game-locked" : ""}">
         <div class="shop-card-top">
           <p class="shop-card-name">${item.name}</p>
           <span class="rarity ${item.rarity}">${item.rarity}</span>
         </div>
         ${swatch}
         <p class="shop-card-desc">${item.desc}</p>
+        ${lockedGame ? `<p class="shop-lock-hint">Finish a Focus session to play</p>` : ""}
         <button type="button" class="btn ${btnClass}" ${actionAttr} ${disabled}>${actionLabel}</button>
       </article>
     `;
@@ -1701,7 +1743,12 @@
 
   els.gameShop.addEventListener("click", (e) => {
     const play = e.target.closest("[data-play-game]");
+    const locked = e.target.closest("[data-locked-game]");
     const buy = e.target.closest("[data-buy-game]");
+    if (locked) {
+      showToast("Games unlock when your study time is up");
+      return;
+    }
     if (play) {
       startMiniGame(play.dataset.playGame);
     } else if (buy) {
@@ -1729,11 +1776,15 @@
     const owned = GAMES.filter((g) => state.ownedGames.includes(g.id));
     if (!owned.length) {
       els.rewardCopy.textContent =
-        "Rest up from your quests. Buy games in the shop to play during breaks.";
+        "Rest up from your quests. Buy games in the shop — they unlock after Focus.";
+      els.rewardGames.innerHTML = "";
+    } else if (!canPlayGames()) {
+      els.rewardCopy.textContent =
+        "Take a breather. Finish a Focus session next to unlock your games.";
       els.rewardGames.innerHTML = "";
     } else {
       els.rewardCopy.textContent =
-        "Rest from your quests — play a game while the countdown runs.";
+        "Study time's up — games unlocked. Play while the rest countdown runs.";
       els.rewardGames.innerHTML = owned
         .map(
           (g) =>
@@ -1802,6 +1853,10 @@
   function startMiniGame(id) {
     const meta = GAMES.find((g) => g.id === id);
     if (!meta || !state.ownedGames.includes(id)) return;
+    if (!canPlayGames()) {
+      showToast("Games unlock when your study time is up");
+      return;
+    }
     stopMiniGame();
     els.gameTitle.textContent = meta.name;
     els.gameHelp.textContent = meta.help;
