@@ -567,6 +567,7 @@ body {
 
 .ai-msg.assistant {
   align-self: flex-start;
+  max-width: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -574,6 +575,58 @@ body {
 .ai-msg.typing {
   color: var(--text-muted);
   font-style: italic;
+}
+
+.ai-msg h4 {
+  margin: 0.85rem 0 0.35rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--neon);
+}
+
+.ai-msg h4:first-child {
+  margin-top: 0;
+}
+
+.ai-msg ul {
+  margin: 0.35rem 0 0.5rem 1.1rem;
+  padding: 0;
+}
+
+.ai-msg li {
+  margin: 0.2rem 0;
+}
+
+.ai-msg a {
+  color: #7ee7ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ai-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.ai-followups .ai-chip {
+  font-size: 0.8rem;
+  background: rgba(57, 255, 182, 0.08);
+  border-color: rgba(57, 255, 182, 0.28);
+}
+
+.ai-subtopics {
+  margin: 0.4rem 0 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.ai-subtopics strong {
+  color: var(--neon-hot);
+  font-weight: 600;
 }
 
 .ai-form textarea {

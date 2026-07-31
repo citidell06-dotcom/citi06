@@ -452,6 +452,7 @@
   let audioCtx = null;
   let soundBus = null;
   let musicBus = null;
+  const aiHistory = [];
 
   function getAudioCtx() {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -518,7 +519,7 @@
 
   function updateAiStatus() {
     if (!els.aiStatus) return;
-    els.aiStatus.textContent = state.settings.aiKey ? "LLM" : "Tutor";
+    els.aiStatus.textContent = state.settings.aiKey ? "AI Mode+LLM" : "AI Mode";
   }
 
   function openSettingsModal() {
@@ -4093,14 +4094,14 @@
     };
   }
 
-  /* ---------- Study AI ---------- */
-  const AI_SYSTEM = `You are Study AI, a friendly expert homework tutor inside a study app called "study with games".
-Help with school and college homework: math, science, history, writing, languages, and study skills.
-Explain clearly with steps. When solving problems, show the reasoning. Ask a short follow-up if useful.
-Be accurate, encouraging, and concise unless the student asks for depth.
-Refuse harmful or cheating-on-exams requests that ask you to take a test for them; instead teach how to learn the material.`;
-
-  const aiHistory = [];
+  /* ---------- AI Mode (research + conversation + math) ---------- */
+  const AI_SYSTEM = `You are AI Mode inside "study with games" — Google AI Mode style.
+You have advanced reasoning, strong math, and conversational memory.
+Use the RESEARCH BRIEF when provided: it contains subtopic searches and web snippets.
+Structure answers with a clear overview, deeper sections, step-by-step math when needed, and 2-4 follow-up questions.
+Include helpful markdown links from the research brief.
+Keep a natural back-and-forth: reference earlier turns, ask clarifying questions, and go deeper when asked.
+Be accurate and encouraging. Teach; do not take invigilated exams for the student.`;
 
   function buildStarfield(el, count, sizeMin, sizeMax, colorChance) {
     if (!el) return;
@@ -4123,21 +4124,6 @@ Refuse harmful or cheating-on-exams requests that ask you to take a test for the
     buildStarfield(document.getElementById("sw-starfield-near"), 70, 0.5, 1.2, 0.4);
   }
 
-  function renderAiChat() {
-    if (!els.aiChat) return;
-    if (!aiHistory.length) {
-      els.aiChat.innerHTML = `<div class="ai-msg assistant">Hi — I'm Study AI. Ask me about homework, explanations, practice problems, or study plans. Tip: add a free OpenRouter key in Settings for full ChatGPT-style answers.</div>`;
-      return;
-    }
-    els.aiChat.innerHTML = aiHistory
-      .map(
-        (m) =>
-          `<div class="ai-msg ${m.role === "user" ? "user" : "assistant"}">${formatAiHtml(m.content)}</div>`
-      )
-      .join("");
-    els.aiChat.scrollTop = els.aiChat.scrollHeight;
-  }
-
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, "&amp;")
@@ -4147,69 +4133,456 @@ Refuse harmful or cheating-on-exams requests that ask you to take a test for the
   }
 
   function formatAiHtml(str) {
-    return escapeHtml(str)
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>");
+    let html = escapeHtml(str);
+    html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+    html = html.replace(/^###\s+(.+)$/gm, "<h4>$1</h4>");
+    html = html.replace(/^##\s+(.+)$/gm, "<h4>$1</h4>");
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    html = html.replace(/(^|[\s(])(https?:\/\/[^\s<]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+    html = html.replace(/(?:^|\n)[\-\*]\s+(.+)/g, "\n<li>$1</li>");
+    html = html.replace(/(?:^|\n)\d+\.\s+(.+)/g, "\n<li>$1</li>");
+    if (html.includes("<li>")) {
+      html = html.replace(/(?:<li>[\s\S]*?<\/li>\s*)+/g, (block) => `<ul>${block}</ul>`);
+    }
+    return html;
   }
 
-  function setAiBusy(busy) {
-    if (els.aiSend) els.aiSend.disabled = busy;
+  function renderAiChat() {
+    if (!els.aiChat) return;
+    if (!aiHistory.length) {
+      els.aiChat.innerHTML = `<div class="ai-msg assistant"><h4>AI Mode</h4>Ask anything — homework, math, history, science, or keep chatting. I split questions into subtopics, search them in parallel, reason through an answer, and offer follow-ups with web links.${
+        state.settings.aiKey ? "" : "<br><br>Tip: add a free OpenRouter key in Settings for even deeper LLM reasoning."
+      }</div>`;
+      return;
+    }
+    els.aiChat.innerHTML = aiHistory
+      .map((m) => {
+        if (m.role === "user") {
+          return `<div class="ai-msg user">${escapeHtml(m.content)}</div>`;
+        }
+        const subs = m.subtopics?.length
+          ? `<p class="ai-subtopics">Searched: ${m.subtopics.map((s) => `<strong>${escapeHtml(s)}</strong>`).join(" · ")}</p>`
+          : "";
+        const follows = (m.followups || [])
+          .map((f) => `<button type="button" class="ai-chip" data-prompt="${escapeHtml(f)}">${escapeHtml(f)}</button>`)
+          .join("");
+        const followBlock = follows ? `<div class="ai-followups">${follows}</div>` : "";
+        return `<div class="ai-msg assistant">${subs}${formatAiHtml(m.content)}${followBlock}</div>`;
+      })
+      .join("");
+    els.aiChat.scrollTop = els.aiChat.scrollHeight;
+  }
+
+  function setAiBusy(busy, label) {
+    if (els.aiSend) {
+      els.aiSend.disabled = busy;
+      els.aiSend.textContent = busy ? label || "Researching…" : "Ask AI Mode";
+    }
     if (els.aiInput) els.aiInput.disabled = busy;
   }
 
-  async function askStudyAi(question) {
-    const q = question.trim();
-    if (!q) return;
-    aiHistory.push({ role: "user", content: q });
-    renderAiChat();
-    const typing = document.createElement("div");
-    typing.className = "ai-msg assistant typing";
-    typing.textContent = "Thinking…";
-    els.aiChat.appendChild(typing);
-    els.aiChat.scrollTop = els.aiChat.scrollHeight;
-    setAiBusy(true);
+  function niceNum(n) {
+    if (!Number.isFinite(n)) return String(n);
+    if (Number.isInteger(n)) return String(n);
+    const r = Math.round(n * 1e6) / 1e6;
+    return String(r);
+  }
 
+  function buildSubtopics(question, prior) {
+    const q = question.trim();
+    const lower = q.toLowerCase();
+    const topics = new Set();
+    topics.add(q.replace(/\?+$/, "").slice(0, 80));
+
+    const vs = q.match(/(.+?)\s+(?:vs\.?|versus|compared to|difference between)\s+(.+)/i);
+    if (vs) {
+      topics.add(vs[1].replace(/^(what(?:'| i)?s|the)\s+/i, "").trim());
+      topics.add(vs[2].replace(/\?+$/, "").trim());
+      topics.add(`${vs[1].trim()} vs ${vs[2].replace(/\?+$/, "").trim()}`);
+    }
+
+    const cleaned = q
+      .replace(/^(can you |could you |please |hey |hi |okay |ok )/i, "")
+      .replace(/^(explain|define|describe|summarize|what is|what's|whats|who is|who's|how does|how do|why does|why do|tell me about|help me with|help with)\s+/i, "")
+      .replace(/\?+$/, "")
+      .trim();
+    if (cleaned && cleaned.length > 2) topics.add(cleaned);
+
+    if (/cause|caused|reasons?|led to/i.test(q)) topics.add(`${cleaned} causes`);
+    if (/example|examples/i.test(q)) topics.add(`${cleaned} examples`);
+    if (/history|war|revolution|empire|civilization/i.test(q)) topics.add(`${cleaned} history`);
+    if (/formula|equation|solve|math|algebra|calculus|geometry|percent|fraction/i.test(q)) {
+      topics.add(`${cleaned} formula`);
+      topics.add(`${cleaned} worked example`);
+    }
+    if (/photosynthesis|mitosis|meiosis|cell|atom|gravity|photosynthesis/i.test(q)) {
+      topics.add(`${cleaned} process`);
+      topics.add(`${cleaned} importance`);
+    }
+
+    // conversational follow-ups: pull nouns from last assistant topic
+    if (prior && /^(yes|yeah|yep|sure|ok|okay|more|go deeper|why|how|and|also|what about|tell me more|continue|elaborate)/i.test(lower)) {
+      const hint = String(prior).match(/\*\*([^*]+)\*\*/)?.[1] || cleaned;
+      topics.add(hint);
+      topics.add(`${hint} details`);
+      topics.add(`${hint} examples`);
+    }
+
+    return [...topics].filter((t) => t && t.length > 1).slice(0, 5);
+  }
+
+  async function wikiSearch(query) {
     try {
-      let answer;
-      if (state.settings.aiKey) {
-        answer = await askLlm(q);
-      } else {
-        answer = await askFallbackTutor(q);
+      const searchUrl =
+        "https://en.wikipedia.org/w/api.php?action=opensearch&limit=4&namespace=0&format=json&origin=*&search=" +
+        encodeURIComponent(query);
+      const searchRes = await fetch(searchUrl);
+      if (!searchRes.ok) return null;
+      const search = await searchRes.json();
+      const titles = search?.[1] || [];
+      const urls = search?.[3] || [];
+      if (!titles.length) return null;
+      const title = titles[0];
+      const sumRes = await fetch(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title.replace(/ /g, "_"))
+      );
+      let extract = "";
+      let url = urls[0] || "";
+      if (sumRes.ok) {
+        const sum = await sumRes.json();
+        extract = sum.extract || "";
+        url = sum.content_urls?.desktop?.page || url;
+        return {
+          query,
+          title: sum.title || title,
+          extract,
+          url,
+          related: titles.slice(1).map((t, i) => ({ title: t, url: urls[i + 1] || `https://en.wikipedia.org/wiki/${encodeURIComponent(t)}` })),
+        };
       }
-      aiHistory.push({ role: "assistant", content: answer });
-    } catch (err) {
-      const msg = err?.message || "Something went wrong.";
-      aiHistory.push({
-        role: "assistant",
-        content: `I hit a snag: ${msg}\n\nYou can retry, or add/check your AI API key in Settings. Meanwhile I can still help with simpler questions.`,
-      });
-    } finally {
-      setAiBusy(false);
-      renderAiChat();
+      return { query, title, extract: "", url, related: [] };
+    } catch {
+      return null;
     }
   }
 
-  async function askLlm(question) {
+  async function ddgSearch(query) {
+    try {
+      const res = await fetch(
+        "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" + encodeURIComponent(query)
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const related = (data.RelatedTopics || [])
+        .flatMap((t) => (t.Topics ? t.Topics : [t]))
+        .filter((t) => t.Text && t.FirstURL)
+        .slice(0, 4)
+        .map((t) => ({ title: t.Text.split(" - ")[0], text: t.Text, url: t.FirstURL }));
+      return {
+        query,
+        abstract: data.AbstractText || "",
+        abstractSource: data.AbstractSource || "",
+        abstractUrl: data.AbstractURL || "",
+        heading: data.Heading || "",
+        related,
+        answer: data.Answer || "",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function researchSubtopics(subtopics) {
+    const jobs = subtopics.map(async (topic) => {
+      const [wiki, ddg] = await Promise.all([wikiSearch(topic), ddgSearch(topic)]);
+      return { topic, wiki, ddg };
+    });
+    return Promise.all(jobs);
+  }
+
+  function trySolveMath(q) {
+    const text = q.replace(/,/g, "").replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+
+    // Quadratic: ax^2 + bx + c = 0 (flexible)
+    const quad = text.match(
+      /(-?\d*(?:\.\d+)?)\s*x\s*\^\s*2\s*([+-])\s*(-?\d+(?:\.\d+)?)\s*x\s*([+-])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)/i
+    ) || text.match(
+      /(-?\d*(?:\.\d+)?)x\^2\s*([+-])\s*(-?\d+(?:\.\d+)?)x\s*([+-])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)/i
+    );
+    if (quad) {
+      let a = quad[1] === "" || quad[1] === "-" ? Number(`${quad[1]}1`) : Number(quad[1]);
+      if (!Number.isFinite(a) || a === 0) a = quad[1] === "-" ? -1 : 1;
+      const b = (quad[2] === "-" ? -1 : 1) * Number(quad[3]);
+      let c = (quad[4] === "-" ? -1 : 1) * Number(quad[5]);
+      const rhs = Number(quad[6]);
+      c -= rhs;
+      const disc = b * b - 4 * a * c;
+      let body =
+        `#### Math — quadratic\n` +
+        `Equation: \`${niceNum(a)}x² ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))}x ${c >= 0 ? "+" : "−"} ${niceNum(Math.abs(c))} = 0\`\n\n` +
+        `1) Identify a=${niceNum(a)}, b=${niceNum(b)}, c=${niceNum(c)}\n` +
+        `2) Discriminant Δ = b² − 4ac = ${niceNum(disc)}\n`;
+      if (disc < 0) {
+        body += `3) Δ < 0 → no real solutions (complex roots exist).\n`;
+      } else {
+        const r1 = (-b + Math.sqrt(disc)) / (2 * a);
+        const r2 = (-b - Math.sqrt(disc)) / (2 * a);
+        body +=
+          `3) x = (−b ± √Δ) / (2a)\n` +
+          `4) Solutions: **x = ${niceNum(r1)}**` +
+          (Math.abs(r1 - r2) > 1e-9 ? ` and **x = ${niceNum(r2)}**` : " (double root)") +
+          `\n`;
+      }
+      return body;
+    }
+
+    // Linear: ax + b = c  or  ax - b = c
+    const linear = text.match(/(-?\d+(?:\.\d+)?)\s*x\s*([+-])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)/i);
+    if (linear) {
+      const a = Number(linear[1]);
+      const b = (linear[2] === "-" ? -1 : 1) * Number(linear[3]);
+      const c = Number(linear[4]);
+      if (a !== 0) {
+        const x = (c - b) / a;
+        return (
+          `#### Math — linear equation\n` +
+          `Solve \`${niceNum(a)}x ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))} = ${niceNum(c)}\`\n\n` +
+          `1) Subtract ${niceNum(b)} from both sides: \`${niceNum(a)}x = ${niceNum(c - b)}\`\n` +
+          `2) Divide by ${niceNum(a)}: **x = ${niceNum(x)}**\n` +
+          `3) Check: ${niceNum(a)}(${niceNum(x)}) ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))} = ${niceNum(c)} ✓`
+        );
+      }
+    }
+
+    // Proportion: a/b = c/x or a/b = x/c
+    const prop = text.match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)\s*\/\s*x/i);
+    if (prop) {
+      const a = Number(prop[1]);
+      const b = Number(prop[2]);
+      const c = Number(prop[3]);
+      const x = (b * c) / a;
+      return (
+        `#### Math — proportion\n` +
+        `\`${niceNum(a)}/${niceNum(b)} = ${niceNum(c)}/x\`\n\n` +
+        `Cross-multiply: ${niceNum(a)}·x = ${niceNum(b)}·${niceNum(c)}\n` +
+        `x = ${niceNum(b * c)} / ${niceNum(a)} = **${niceNum(x)}**`
+      );
+    }
+
+    // Percentage: what is p% of n
+    const pct = text.match(/(?:what(?:'| i)?s|calculate)?\s*(-?\d+(?:\.\d+)?)\s*%\s*(?:of)\s*(-?\d+(?:\.\d+)?)/i);
+    if (pct) {
+      const p = Number(pct[1]);
+      const n = Number(pct[2]);
+      const val = (p / 100) * n;
+      return (
+        `#### Math — percent\n` +
+        `${niceNum(p)}% of ${niceNum(n)} = (${niceNum(p)}/100) × ${niceNum(n)} = **${niceNum(val)}**`
+      );
+    }
+
+    // Fraction of: a/b of n
+    const fracOf = text.match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)\s*(?:of)\s*(-?\d+(?:\.\d+)?)/i);
+    if (fracOf) {
+      const a = Number(fracOf[1]);
+      const b = Number(fracOf[2]);
+      const n = Number(fracOf[3]);
+      const val = (a / b) * n;
+      return (
+        `#### Math — fraction\n` +
+        `${niceNum(a)}/${niceNum(b)} of ${niceNum(n)} = **${niceNum(val)}**`
+      );
+    }
+
+    // Bare expression
+    const exprMatch = text.match(
+      /(?:what(?:'| i)?s|calculate|compute|evaluate|solve)?\s*([0-9+\-*/().%\s^]+)\??$/i
+    );
+    if (exprMatch) {
+      let expr = exprMatch[1].replace(/\^/g, "**").replace(/[^0-9+\-*/().%\s*]/g, "");
+      expr = expr.replace(/(\d+(?:\.\d+)?)%/g, "($1/100)");
+      if (/^[0-9+\-*/().\s*]+$/.test(expr) && /\d/.test(expr)) {
+        try {
+          // eslint-disable-next-line no-new-func
+          const val = Function(`"use strict"; return (${expr});`)();
+          if (typeof val === "number" && Number.isFinite(val)) {
+            return `#### Math — calculation\nExpression: \`${exprMatch[1].trim()}\`\nResult: **${niceNum(val)}**`;
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  function extractFollowups(answer, question, research) {
+    const follows = [];
+    const lines = String(answer).split("\n");
+    for (const line of lines) {
+      const m = line.match(/^(?:[-*•]|\d+\.)\s+(?:Follow[- ]?up:\s*)?(.+\?)\s*$/i);
+      if (m) follows.push(m[1].trim());
+    }
+    const qLow = question.toLowerCase();
+    if (!follows.length) {
+      if (/math|solve|equation|x\s*=/i.test(question) || trySolveMath(question)) {
+        follows.push("Can you give me a similar practice problem?");
+        follows.push("Explain that step more slowly");
+      } else {
+        follows.push(`Give a simpler explanation of ${research?.[0]?.wiki?.title || "this"}`);
+        follows.push("Show a real-world example");
+        follows.push("Quiz me with 3 questions on this");
+      }
+      if (/compare|vs|difference/i.test(qLow)) follows.push("Make a study table I can memorize");
+      if (/war|history|cause/i.test(qLow)) follows.push("What happened next?");
+    }
+    return [...new Set(follows)].slice(0, 4);
+  }
+
+  function synthesizeFromResearch(question, research, mathBlock, priorTurns) {
+    const links = [];
+    const sections = [];
+    let overview = "";
+
+    for (const item of research) {
+      if (item.wiki?.extract && !overview) {
+        overview = item.wiki.extract;
+      } else if (item.ddg?.abstract && !overview) {
+        overview = item.ddg.abstract;
+      }
+      if (item.wiki?.extract) {
+        sections.push({
+          title: item.wiki.title || item.topic,
+          body: item.wiki.extract,
+        });
+      } else if (item.ddg?.abstract) {
+        sections.push({
+          title: item.ddg.heading || item.topic,
+          body: item.ddg.abstract,
+        });
+      }
+      if (item.wiki?.url) links.push({ title: item.wiki.title || item.topic, url: item.wiki.url });
+      if (item.ddg?.abstractUrl) {
+        links.push({
+          title: item.ddg.abstractSource || item.ddg.heading || item.topic,
+          url: item.ddg.abstractUrl,
+        });
+      }
+      (item.wiki?.related || []).forEach((r) => links.push(r));
+      (item.ddg?.related || []).slice(0, 2).forEach((r) => links.push({ title: r.title, url: r.url }));
+    }
+
+    // dedupe links
+    const seen = new Set();
+    const uniqueLinks = links.filter((l) => {
+      if (!l.url || seen.has(l.url)) return false;
+      seen.add(l.url);
+      return true;
+    }).slice(0, 6);
+
+    const uniqueSections = [];
+    const seenTitles = new Set();
+    for (const s of sections) {
+      const key = (s.title || "").toLowerCase();
+      if (seenTitles.has(key)) continue;
+      seenTitles.add(key);
+      uniqueSections.push(s);
+    }
+
+    let convoNote = "";
+    if (priorTurns >= 2) {
+      convoNote = `\nI'm keeping our thread going — tell me if you want this simpler, harder, or turned into practice.\n`;
+    }
+
+    let out = `#### Overview\n${overview || "I researched several angles of your question. Here's the clearest synthesis:"}\n`;
+    if (mathBlock) out += `\n${mathBlock}\n`;
+
+    uniqueSections.slice(0, 3).forEach((s, i) => {
+      if (i === 0 && s.body === overview) return;
+      out += `\n#### ${s.title}\n${s.body}\n`;
+    });
+
+    if (/study plan|how should i study|revise|review for/i.test(question)) {
+      out +=
+        `\n#### Study plan\n` +
+        `1) 20 min — read the overview and write 5 key facts from memory\n` +
+        `2) 15 min — explain it out loud like teaching a friend\n` +
+        `3) 15 min — do 3 practice questions (ask me for them)\n` +
+        `4) 10 min — quick recap of mistakes only\n`;
+    }
+
+    if (uniqueLinks.length) {
+      out += `\n#### Explore the web\n`;
+      uniqueLinks.forEach((l) => {
+        out += `- [${l.title}](${l.url})\n`;
+      });
+    }
+
+    out += convoNote;
+    out += `\n#### Go deeper\n`;
+    const follows = extractFollowups(out, question, research);
+    follows.forEach((f, i) => {
+      out += `${i + 1}. ${f}\n`;
+    });
+
+    if (!overview && !mathBlock && !uniqueSections.length) {
+      out =
+        `I couldn't find strong web matches yet, but we can still reason it out together.\n\n` +
+        `Try rephrasing with a topic name (e.g. "causes of World War I") or paste the exact homework problem.\n` +
+        (state.settings.aiKey
+          ? ""
+          : `\nFor broader free-form chat, add an OpenRouter key in Settings — AI Mode will still research the web first.`);
+    }
+
+    return { content: out.trim(), followups: extractFollowups(out, question, research) };
+  }
+
+  function researchBriefText(question, subtopics, research, mathBlock) {
+    let brief = `USER QUESTION: ${question}\nSUBTOPICS: ${subtopics.join(" | ")}\n\n`;
+    if (mathBlock) brief += `MATH ENGINE RESULT:\n${mathBlock}\n\n`;
+    research.forEach((item, idx) => {
+      brief += `SOURCE SET ${idx + 1} — ${item.topic}\n`;
+      if (item.wiki?.extract) {
+        brief += `Wikipedia (${item.wiki.title}): ${item.wiki.extract}\nLink: ${item.wiki.url}\n`;
+      }
+      if (item.ddg?.abstract) {
+        brief += `Web abstract (${item.ddg.heading || item.ddg.abstractSource}): ${item.ddg.abstract}\nLink: ${item.ddg.abstractUrl}\n`;
+      }
+      if (item.ddg?.answer) brief += `Instant answer: ${item.ddg.answer}\n`;
+      brief += "\n";
+    });
+    return brief;
+  }
+
+  async function askLlmWithResearch(question, brief) {
     const base = (state.settings.aiBase || "https://openrouter.ai/api/v1").replace(/\/$/, "");
     const model = state.settings.aiModel || "openai/gpt-oss-20b:free";
+    const history = aiHistory
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-16)
+      .map((m) => ({
+        role: m.role,
+        content: m.role === "assistant" ? String(m.content).slice(0, 2500) : m.content,
+      }));
     const messages = [
       { role: "system", content: AI_SYSTEM },
-      ...aiHistory.filter((m) => m.role === "user" || m.role === "assistant").slice(-12),
+      ...history.slice(0, -1),
+      {
+        role: "user",
+        content:
+          `${question}\n\n--- RESEARCH BRIEF (from parallel web search) ---\n${brief}\n--- END BRIEF ---\n` +
+          `Write a helpful AI Mode answer with overview, deeper sections, math steps if relevant, markdown links, and 3 follow-up questions.`,
+      },
     ];
-    // current question already in history
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${state.settings.aiKey}`,
         "HTTP-Referer": location.origin || "https://study-with-games.local",
-        "X-Title": "study with games",
+        "X-Title": "study with games AI Mode",
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.5,
-      }),
+      body: JSON.stringify({ model, messages, temperature: 0.45 }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -4221,95 +4594,72 @@ Refuse harmful or cheating-on-exams requests that ask you to take a test for the
     return String(content).trim();
   }
 
-  function trySolveMath(q) {
-    const linear = q.match(/(-?\d+(?:\.\d+)?)\s*x\s*([+-])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)/i);
-    if (linear) {
-      const a = Number(linear[1]);
-      const sign = linear[2] === "-" ? -1 : 1;
-      const b = sign * Number(linear[3]);
-      const c = Number(linear[4]);
-      if (a !== 0) {
-        const x = (c - b) / a;
-        return (
-          `Let's solve ${a}x ${b >= 0 ? "+" : "-"} ${Math.abs(b)} = ${c} step by step.\n\n` +
-          `1) Move the constant: ${a}x = ${c} ${b >= 0 ? "-" : "+"} ${Math.abs(b)} = ${c - b}\n` +
-          `2) Divide both sides by ${a}: x = ${(c - b)} / ${a}\n` +
-          `3) Answer: x = ${Number.isInteger(x) ? x : Number(x.toFixed(4))}\n\n` +
-          `Check: ${a}(${Number.isInteger(x) ? x : Number(x.toFixed(4))}) ${b >= 0 ? "+" : "-"} ${Math.abs(b)} = ${c}.`
-        );
-      }
-    }
+  async function askStudyAi(question) {
+    const q = question.trim();
+    if (!q) return;
+    aiHistory.push({ role: "user", content: q });
+    renderAiChat();
 
-    const exprMatch = q.match(/(?:what(?:'| i)?s|calculate|compute|evaluate|solve)?\s*([0-9+\-*/().%\s^]+)\??$/i);
-    if (exprMatch) {
-      let expr = exprMatch[1].replace(/\^/g, "**").replace(/[^0-9+\-*/().%\s*]/g, "");
-      expr = expr.replace(/%/g, "/100");
-      if (/^[0-9+\-*/().\s*]+$/.test(expr) && /\d/.test(expr)) {
-        try {
-          // eslint-disable-next-line no-new-func
-          const val = Function(`"use strict"; return (${expr});`)();
-          if (typeof val === "number" && Number.isFinite(val)) {
-            return `Working it out:\n\nExpression: ${exprMatch[1].trim()}\nResult: ${val}`;
-          }
-        } catch (_) {}
-      }
-    }
-    return null;
-  }
-
-  async function wikiSearch(query) {
-    const searchUrl =
-      "https://en.wikipedia.org/w/api.php?action=opensearch&limit=3&namespace=0&format=json&origin=*&search=" +
-      encodeURIComponent(query);
-    const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) return null;
-    const search = await searchRes.json();
-    const title = search?.[1]?.[0];
-    if (!title) return null;
-    const sumRes = await fetch(
-      "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title)
-    );
-    if (!sumRes.ok) return null;
-    const sum = await sumRes.json();
-    return {
-      title: sum.title || title,
-      extract: sum.extract || "",
-      url: sum.content_urls?.desktop?.page || "",
-    };
-  }
-
-  async function askFallbackTutor(question) {
-    const math = trySolveMath(question);
-    if (math) return math;
-
-    const cleaned = question
-      .replace(/^(what is|what's|whats|who is|who's|explain|define|tell me about|help me with)\s+/i, "")
-      .replace(/\?+$/, "")
-      .trim();
+    const typing = document.createElement("div");
+    typing.className = "ai-msg assistant typing";
+    typing.textContent = "AI Mode: splitting into subtopics and searching…";
+    els.aiChat.appendChild(typing);
+    els.aiChat.scrollTop = els.aiChat.scrollHeight;
+    setAiBusy(true, "Researching…");
 
     try {
-      const wiki = await wikiSearch(cleaned || question);
-      if (wiki?.extract) {
-        return (
-          `Here's a clear explanation of **${wiki.title}**:\n\n` +
-          `${wiki.extract}\n\n` +
-          `Study tip: try rewriting this in your own words, then quiz yourself with one example.\n` +
-          (wiki.url ? `\nSource: ${wiki.url}` : "") +
-          `\n\nWant a simpler version, examples, or practice questions? Just ask.\n` +
-          `(For ChatGPT-level conversation on any topic, add a free OpenRouter API key in Settings.)`
-        );
-      }
-    } catch (_) {}
+      const lastAssistant = [...aiHistory].reverse().find((m) => m.role === "assistant");
+      const subtopics = buildSubtopics(q, lastAssistant?.content || "");
+      typing.textContent = `AI Mode: searching ${subtopics.length} angles in parallel…`;
 
-    return (
-      `I can help with that.\n\n` +
-      `Try asking in one of these ways:\n` +
-      `• "Explain [topic] simply"\n` +
-      `• "Solve: 3x + 7 = 22"\n` +
-      `• "Difference between A and B"\n` +
-      `• "Make a study plan for [subject]"\n\n` +
-      `For full ChatGPT-style answers on anything, open Settings → Study AI and paste a free OpenRouter key (openrouter.ai/keys), then keep the free model.`
-    );
+      const mathBlock = trySolveMath(q);
+      const research = await researchSubtopics(subtopics);
+      const brief = researchBriefText(q, subtopics, research, mathBlock);
+
+      let content;
+      let followups = [];
+      if (state.settings.aiKey) {
+        typing.textContent = "AI Mode: reasoning with research…";
+        try {
+          content = await askLlmWithResearch(q, brief);
+          followups = extractFollowups(content, q, research);
+        } catch (err) {
+          const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length);
+          content =
+            local.content +
+            `\n\n_(LLM unavailable: ${err.message}. Showing research synthesis instead.)_`;
+          followups = local.followups;
+        }
+      } else {
+        typing.textContent = "AI Mode: synthesizing answer…";
+        const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length);
+        content = local.content;
+        followups = local.followups;
+      }
+
+      // strip trailing "Go deeper" numbered list from content if we render chips
+      const cleaned = content.replace(/\n#### Go deeper\n[\s\S]*$/i, "").trim();
+
+      aiHistory.push({
+        role: "assistant",
+        content: cleaned,
+        subtopics,
+        followups,
+      });
+    } catch (err) {
+      const msg = err?.message || "Something went wrong.";
+      const mathBlock = trySolveMath(q);
+      aiHistory.push({
+        role: "assistant",
+        content:
+          (mathBlock ? `${mathBlock}\n\n` : "") +
+          `I hit a research snag: ${msg}\n\nAsk again, or rephrase the topic. You can also add an API key in Settings for LLM backup.`,
+        followups: ["Try a simpler version of that question", "Help me solve a math problem"],
+      });
+    } finally {
+      setAiBusy(false);
+      renderAiChat();
+    }
   }
 
   els.aiForm?.addEventListener("submit", (e) => {
@@ -4327,6 +4677,12 @@ Refuse harmful or cheating-on-exams requests that ask you to take a test for the
   els.aiSuggestions?.addEventListener("click", (e) => {
     const chip = e.target.closest("[data-prompt]");
     if (!chip) return;
+    askStudyAi(chip.dataset.prompt);
+  });
+
+  els.aiChat?.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-prompt]");
+    if (!chip || !els.aiChat.contains(chip)) return;
     askStudyAi(chip.dataset.prompt);
   });
 

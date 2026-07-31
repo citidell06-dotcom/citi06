@@ -152,8 +152,8 @@
         <span>Mute all audio</span>
       </label>
       <hr class="settings-divider" />
-      <h3 class="settings-sub">Study AI</h3>
-      <p class="settings-hint">Optional: add a free <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> or OpenAI key for full ChatGPT-style answers. Without a key, the tutor still helps using study tools.</p>
+      <h3 class="settings-sub">AI Mode</h3>
+      <p class="settings-hint">AI Mode researches the web by default. Optional: add a free <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> or OpenAI key for deeper LLM reasoning on top of research.</p>
       <label class="settings-row settings-row-stack">
         <span>AI API key</span>
         <input type="password" id="setting-ai-key" placeholder="sk-… or OpenRouter key" autocomplete="off" />
@@ -300,23 +300,23 @@
 
     <section class="panel ai-panel" aria-labelledby="ai-heading">
       <div class="panel-head">
-        <h2 id="ai-heading">Study AI</h2>
-        <span class="panel-chip" id="ai-status">Tutor</span>
+        <h2 id="ai-heading">AI Mode</h2>
+        <span class="panel-chip" id="ai-status">Research</span>
       </div>
-      <p class="ai-intro">Ask homework questions, get explanations, and work through problems — like a study ChatGPT.</p>
+      <p class="ai-intro">Ask anything. AI Mode splits your question into subtopics, searches them in parallel, reasons through the answer, and keeps the conversation going with follow-ups and web links.</p>
       <div class="ai-suggestions" id="ai-suggestions">
-        <button type="button" class="ai-chip" data-prompt="Explain photosynthesis like I'm in 8th grade">Explain photosynthesis</button>
-        <button type="button" class="ai-chip" data-prompt="Help me solve: 3x + 7 = 22">Solve 3x + 7 = 22</button>
-        <button type="button" class="ai-chip" data-prompt="What's the difference between mitosis and meiosis?">Mitosis vs meiosis</button>
-        <button type="button" class="ai-chip" data-prompt="Give me a study plan for a history test tomorrow">Study plan</button>
+        <button type="button" class="ai-chip" data-prompt="Explain photosynthesis and why it matters for life on Earth">Photosynthesis deep dive</button>
+        <button type="button" class="ai-chip" data-prompt="Solve step by step: 2x^2 - 8x + 6 = 0">Quadratic equation</button>
+        <button type="button" class="ai-chip" data-prompt="Compare mitosis and meiosis with a table and examples">Mitosis vs meiosis</button>
+        <button type="button" class="ai-chip" data-prompt="What caused World War I? Break it into causes and give sources">WWI causes</button>
       </div>
       <div class="ai-chat" id="ai-chat" aria-live="polite"></div>
       <form class="ai-form" id="ai-form">
-        <label class="sr-only" for="ai-input">Ask Study AI</label>
-        <textarea id="ai-input" rows="2" maxlength="2000" placeholder="Ask anything about your homework…" required></textarea>
+        <label class="sr-only" for="ai-input">Ask AI Mode</label>
+        <textarea id="ai-input" rows="2" maxlength="4000" placeholder="Ask anything — homework, math, history, or keep chatting…" required></textarea>
         <div class="ai-form-actions">
-          <button type="button" class="btn btn-ghost" id="ai-clear">Clear</button>
-          <button type="submit" class="btn btn-primary" id="ai-send">Ask</button>
+          <button type="button" class="btn btn-ghost" id="ai-clear">New chat</button>
+          <button type="submit" class="btn btn-primary" id="ai-send">Ask AI Mode</button>
         </div>
       </form>
     </section>
