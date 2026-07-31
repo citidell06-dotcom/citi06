@@ -620,6 +620,35 @@ body {
   margin-bottom: 0.1rem;
 }
 
+.ai-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-source-link {
+  display: inline-block;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(126, 231, 255, 0.28);
+  background: rgba(126, 231, 255, 0.08);
+  color: #7ee7ff !important;
+  text-decoration: none !important;
+  font-size: 0.78rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-source-link:hover {
+  border-color: #7ee7ff;
+  background: rgba(126, 231, 255, 0.16);
+}
+
 .ai-followups .ai-chip {
   font-size: 0.8rem;
   background: rgba(57, 255, 182, 0.08);

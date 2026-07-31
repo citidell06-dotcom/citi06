@@ -4097,13 +4097,12 @@
 
   /* ---------- AI Mode (human chat + research + math) ---------- */
   const AI_SYSTEM = `You are a friendly study buddy inside "study with games".
-Talk like a real person: warm, clear, natural — contractions are good. Not stiff, not corporate, not a search-results page.
-You can chat about feelings, stress, jokes, and everyday stuff AND help with homework.
-Remember the conversation and reply like you're texting a smart friend who happens to be great at school.
-When a RESEARCH BRIEF is provided, weave the facts into normal sentences. Don't dump headings like "Overview" unless it really helps.
-For math: walk through steps out loud like you're at a desk together.
-End with 2-3 natural follow-up questions the student might actually say (e.g. "wait why though?", "can you give an example?").
-Include a couple markdown links when useful. Be accurate. Don't take invigilated exams for them — teach instead.`;
+Talk like a real person: warm, clear, natural — contractions are good.
+When INTERNET RESULTS are provided, you MUST use them to answer the question. Summarize clearly in your own words, then include the source links as markdown.
+If results conflict, say so briefly. If results are weak, say what you found and what is still unclear.
+You can also chat casually. Remember the conversation.
+For math: walk through steps out loud. End with 2-3 natural follow-up questions.
+Be accurate. Don't take invigilated exams for them — teach instead.`;
 
   let aiUserName = "";
 
@@ -4158,8 +4157,8 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
     if (!aiHistory.length) {
       els.aiChat.innerHTML = `<div class="ai-msg assistant">Hey${
         aiUserName ? ` ${escapeHtml(aiUserName)}` : ""
-      } — what's up? You can talk to me normally. Stuck on homework, need a pep talk, want me to walk through math, or just vent about a test… I'm here.<br><br>Try: “hey I’m lost on fractions” or “can you explain this like I’m tired lol”${
-        state.settings.aiKey ? "" : "<br><br><span style=\"opacity:.75\">Optional: drop a free OpenRouter key in Settings if you want even richer chat.</span>"
+      } — ask me anything. I’ll search the internet, then give you a clear answer with sources you can open.<br><br>Try: “Who invented the telephone?” or “hey explain black holes simply”${
+        state.settings.aiKey ? "" : "<br><br><span style=\"opacity:.75\">Optional: add a free OpenRouter key in Settings for even richer wording.</span>"
       }</div>`;
       return;
     }
@@ -4168,13 +4167,22 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
         if (m.role === "user") {
           return `<div class="ai-msg user">${escapeHtml(m.content)}</div>`;
         }
+        const sources = (m.sources || [])
+          .map(
+            (s, i) =>
+              `<a class="ai-source-link" href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${i + 1}. ${escapeHtml(s.title)}</a>`
+          )
+          .join("");
+        const sourceBlock = sources
+          ? `<div class="ai-sources"><span class="ai-follow-label">From the web:</span>${sources}</div>`
+          : "";
         const follows = (m.followups || [])
           .map((f) => `<button type="button" class="ai-chip" data-prompt="${escapeHtml(f)}">${escapeHtml(f)}</button>`)
           .join("");
         const followBlock = follows
           ? `<div class="ai-followups"><span class="ai-follow-label">Keep talking:</span>${follows}</div>`
           : "";
-        return `<div class="ai-msg assistant">${formatAiHtml(m.content)}${followBlock}</div>`;
+        return `<div class="ai-msg assistant">${formatAiHtml(m.content)}${sourceBlock}${followBlock}</div>`;
       })
       .join("");
     els.aiChat.scrollTop = els.aiChat.scrollHeight;
@@ -4322,53 +4330,62 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
     return [...topics].filter((t) => t && t.length > 1).slice(0, 5);
   }
 
-  async function wikiSearch(query) {
+  async function wikiMultiSearch(query) {
     try {
-      const searchUrl =
-        "https://en.wikipedia.org/w/api.php?action=opensearch&limit=4&namespace=0&format=json&origin=*&search=" +
+      const url =
+        "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=5&prop=extracts|info&exintro=1&explaintext=1&exchars=500&inprop=url&format=json&origin=*&gsrsearch=" +
         encodeURIComponent(query);
-      const searchRes = await fetch(searchUrl);
-      if (!searchRes.ok) return null;
-      const search = await searchRes.json();
-      const titles = search?.[1] || [];
-      const urls = search?.[3] || [];
-      if (!titles.length) return null;
-      const title = titles[0];
-      const sumRes = await fetch(
-        "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title.replace(/ /g, "_"))
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const pages = Object.values(data.query?.pages || {}).sort(
+        (a, b) => (a.index || 0) - (b.index || 0)
       );
-      let extract = "";
-      let url = urls[0] || "";
-      if (sumRes.ok) {
-        const sum = await sumRes.json();
-        extract = sum.extract || "";
-        url = sum.content_urls?.desktop?.page || url;
-        return {
+      return pages
+        .filter((p) => p.title && p.extract)
+        .map((p) => ({
+          title: p.title,
+          extract: p.extract,
+          url: p.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(p.title)}`,
+          source: "Wikipedia",
           query,
-          title: sum.title || title,
-          extract,
-          url,
-          related: titles.slice(1).map((t, i) => ({ title: t, url: urls[i + 1] || `https://en.wikipedia.org/wiki/${encodeURIComponent(t)}` })),
-        };
-      }
-      return { query, title, extract: "", url, related: [] };
+        }));
     } catch {
-      return null;
+      return [];
     }
+  }
+
+  async function wikiSearch(query) {
+    const pages = await wikiMultiSearch(query);
+    if (!pages.length) return null;
+    return {
+      query,
+      title: pages[0].title,
+      extract: pages[0].extract,
+      url: pages[0].url,
+      related: pages.slice(1).map((p) => ({ title: p.title, url: p.url, text: p.extract })),
+      pages,
+    };
   }
 
   async function ddgSearch(query) {
     try {
       const res = await fetch(
-        "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" + encodeURIComponent(query)
+        "https://api.duckduckgo.com/?format=json&no_html=1&skip_disambig=1&q=" +
+          encodeURIComponent(query)
       );
       if (!res.ok) return null;
       const data = await res.json();
       const related = (data.RelatedTopics || [])
         .flatMap((t) => (t.Topics ? t.Topics : [t]))
         .filter((t) => t.Text && t.FirstURL)
-        .slice(0, 4)
-        .map((t) => ({ title: t.Text.split(" - ")[0], text: t.Text, url: t.FirstURL }));
+        .slice(0, 5)
+        .map((t) => ({
+          title: t.Text.split(" - ")[0],
+          text: t.Text,
+          url: t.FirstURL,
+          source: "Web",
+        }));
       return {
         query,
         abstract: data.AbstractText || "",
@@ -4376,19 +4393,102 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
         abstractUrl: data.AbstractURL || "",
         heading: data.Heading || "",
         related,
-        answer: data.Answer || "",
+        answer: data.Answer || data.Definition || "",
+        definition: data.Definition || "",
+        definitionUrl: data.DefinitionURL || "",
       };
     } catch {
       return null;
     }
   }
 
+  /** Flatten all internet hits into one ranked list of sources */
+  function collectWebHits(research) {
+    const hits = [];
+    const seen = new Set();
+    const push = (hit) => {
+      if (!hit?.url || seen.has(hit.url)) return;
+      if (!hit.extract && !hit.text && !hit.abstract) return;
+      seen.add(hit.url);
+      hits.push(hit);
+    };
+
+    for (const item of research) {
+      if (item.wiki?.pages) {
+        item.wiki.pages.forEach((p) =>
+          push({
+            title: p.title,
+            extract: p.extract,
+            url: p.url,
+            source: "Wikipedia",
+            topic: item.topic,
+          })
+        );
+      } else if (item.wiki?.extract) {
+        push({
+          title: item.wiki.title,
+          extract: item.wiki.extract,
+          url: item.wiki.url,
+          source: "Wikipedia",
+          topic: item.topic,
+        });
+      }
+      if (item.ddg?.abstract) {
+        push({
+          title: item.ddg.heading || item.ddg.abstractSource || item.topic,
+          extract: item.ddg.abstract,
+          url: item.ddg.abstractUrl,
+          source: item.ddg.abstractSource || "Web",
+          topic: item.topic,
+        });
+      }
+      if (item.ddg?.answer) {
+        push({
+          title: `Answer: ${item.topic}`,
+          extract: item.ddg.answer,
+          url: item.ddg.abstractUrl || item.ddg.definitionUrl || `https://duckduckgo.com/?q=${encodeURIComponent(item.topic)}`,
+          source: "Web",
+          topic: item.topic,
+        });
+      }
+      (item.ddg?.related || []).forEach((r) =>
+        push({
+          title: r.title,
+          extract: r.text,
+          url: r.url,
+          source: "Web",
+          topic: item.topic,
+        })
+      );
+      (item.wiki?.related || []).forEach((r) =>
+        push({
+          title: r.title,
+          extract: r.text || "",
+          url: r.url,
+          source: "Wikipedia",
+          topic: item.topic,
+        })
+      );
+    }
+    return hits;
+  }
+
   async function researchSubtopics(subtopics) {
+    // Always include the original phrasing as first query if missing
     const jobs = subtopics.map(async (topic) => {
       const [wiki, ddg] = await Promise.all([wikiSearch(topic), ddgSearch(topic)]);
       return { topic, wiki, ddg };
     });
     return Promise.all(jobs);
+  }
+
+  async function searchInternet(question, priorContent) {
+    const subtopics = buildSubtopics(question, priorContent || "");
+    // Prefer fewer, sharper queries so each gets rich results
+    const queries = subtopics.slice(0, 4);
+    const research = await researchSubtopics(queries);
+    const hits = collectWebHits(research);
+    return { queries, research, hits };
   }
 
   function trySolveMath(q) {
@@ -4531,111 +4631,66 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
     return t;
   }
 
-  function synthesizeFromResearch(question, research, mathBlock, priorTurns) {
-    const links = [];
-    const sections = [];
-    let overview = "";
-
-    for (const item of research) {
-      if (item.wiki?.extract && !overview) overview = item.wiki.extract;
-      else if (item.ddg?.abstract && !overview) overview = item.ddg.abstract;
-      if (item.wiki?.extract) {
-        sections.push({ title: item.wiki.title || item.topic, body: item.wiki.extract });
-      } else if (item.ddg?.abstract) {
-        sections.push({ title: item.ddg.heading || item.topic, body: item.ddg.abstract });
-      }
-      if (item.wiki?.url) links.push({ title: item.wiki.title || item.topic, url: item.wiki.url });
-      if (item.ddg?.abstractUrl) {
-        links.push({
-          title: item.ddg.abstractSource || item.ddg.heading || item.topic,
-          url: item.ddg.abstractUrl,
-        });
-      }
-      (item.wiki?.related || []).forEach((r) => links.push(r));
-      (item.ddg?.related || []).slice(0, 2).forEach((r) => links.push({ title: r.title, url: r.url }));
-    }
-
-    const seen = new Set();
-    const uniqueLinks = links.filter((l) => {
-      if (!l.url || seen.has(l.url)) return false;
-      seen.add(l.url);
-      return true;
-    }).slice(0, 4);
-
-    const uniqueSections = [];
-    const seenTitles = new Set();
-    for (const s of sections) {
-      const key = (s.title || "").toLowerCase();
-      if (seenTitles.has(key)) continue;
-      seenTitles.add(key);
-      uniqueSections.push(s);
-    }
-
+  function synthesizeFromResearch(question, research, mathBlock, priorTurns, webHits = []) {
+    const hits = webHits.length ? webHits : collectWebHits(research);
+    const overview = hits[0]?.extract || "";
     const nameBit = aiUserName ? `, ${aiUserName}` : "";
     const openers = [
-      `Okay${nameBit}, here's how I'd put it:`,
-      `Alright${nameBit} — so basically:`,
-      `Good question${nameBit}. Here's the deal:`,
-      `Yeah I got you${nameBit}. So:`,
+      `Okay${nameBit}, I searched the internet for that. Here's what I found:`,
+      `Alright${nameBit} — I looked this up. Basically:`,
+      `Good question${nameBit}. From what I found online:`,
+      `Yeah I got you${nameBit}. After checking the web:`,
     ];
     const opener = openers[Math.min(priorTurns, openers.length - 1) % openers.length];
 
     let out = "";
     if (mathBlock) {
       out += `${mathBlock}\n`;
-      if (overview) out += `\nAnd if you want the idea behind it in words: ${humanizeFact(overview)}\n`;
+      if (overview) out += `\nI also checked online — ${humanizeFact(overview)}\n`;
     } else if (overview) {
-      out += `${opener}\n\n${humanizeFact(overview)}\n`;
+      out += `${opener}\n\n**${hits[0].title}** — ${humanizeFact(overview)}\n`;
     } else {
-      out += `Hmm, I didn't get a clean hit on that yet${nameBit}, but we can still figure it out together.\n`;
+      out += `I searched the web for that${nameBit}, but didn't get a clean hit. Try asking with clearer keywords (like a topic name or the exact homework question).\n`;
     }
 
-    const extras = uniqueSections.filter((s) => s.body !== overview).slice(0, 2);
-    extras.forEach((s) => {
-      out += `\nAlso worth knowing about **${s.title}**: ${humanizeFact(s.body)}\n`;
+    // Extra web findings
+    hits.slice(1, 4).forEach((h) => {
+      const blurb = humanizeFact(h.extract || h.text || "");
+      if (!blurb || blurb === overview) return;
+      out += `\nFrom **${h.title}**: ${blurb.slice(0, 320)}${blurb.length > 320 ? "…" : ""}\n`;
     });
 
     if (/study plan|how should i study|revise|review for|stressed about a .*test/i.test(question)) {
       out +=
-        `\nIf you want a chill plan: do 20 min reading + writing 5 facts from memory, 15 min explaining it out loud, 15 min practice questions, then 10 min only reviewing mistakes. Want me to quiz you after?\n`;
+        `\nIf you want a chill plan: 20 min reading + 5 facts from memory, 15 min explain it out loud, 15 min practice, 10 min review mistakes. Want a quiz after?\n`;
     }
 
-    if (uniqueLinks.length) {
-      out += `\nIf you wanna peek at sources:\n`;
-      uniqueLinks.forEach((l) => {
-        out += `- [${l.title}](${l.url})\n`;
+    if (hits.length) {
+      out += `\n**Sources from the web:**\n`;
+      hits.slice(0, 5).forEach((h, i) => {
+        out += `${i + 1}. [${h.title}](${h.url}) — ${h.source || "Web"}\n`;
       });
     }
 
-    if (priorTurns >= 3) {
-      out += `\nI'm still with you on this thread — say if you want it simpler, harder, or just a pep talk.\n`;
-    } else {
-      out += `\nDoes that make sense, or is some part still fuzzy?\n`;
+    if (overview || mathBlock) {
+      out += priorTurns >= 3
+        ? `\nStill with you — want this simpler, deeper, or turned into practice?\n`
+        : `\nWant me to dig deeper on any part of that?\n`;
     }
 
-    if (!overview && !mathBlock && !uniqueSections.length) {
-      out =
-        `I'm not totally sure what you mean yet${nameBit} — talk to me like you'd text a friend. ` +
-        `Like “I'm lost on fractions” or paste the exact problem.\n` +
-        (state.settings.aiKey ? "" : `\n(You can also add a free OpenRouter key in Settings for even more natural back-and-forth.)`);
-    }
-
-    return { content: out.trim(), followups: extractFollowups(out, question, research) };
+    return {
+      content: out.trim(),
+      followups: extractFollowups(out, question, research),
+      sources: hits.slice(0, 5),
+    };
   }
 
-  function researchBriefText(question, subtopics, research, mathBlock) {
-    let brief = `USER QUESTION: ${question}\nSUBTOPICS: ${subtopics.join(" | ")}\n\n`;
+  function researchBriefText(question, subtopics, research, mathBlock, hits = []) {
+    let brief = `USER QUESTION: ${question}\nSEARCH QUERIES: ${subtopics.join(" | ")}\n\n`;
     if (mathBlock) brief += `MATH ENGINE RESULT:\n${mathBlock}\n\n`;
-    research.forEach((item, idx) => {
-      brief += `SOURCE SET ${idx + 1} — ${item.topic}\n`;
-      if (item.wiki?.extract) {
-        brief += `Wikipedia (${item.wiki.title}): ${item.wiki.extract}\nLink: ${item.wiki.url}\n`;
-      }
-      if (item.ddg?.abstract) {
-        brief += `Web abstract (${item.ddg.heading || item.ddg.abstractSource}): ${item.ddg.abstract}\nLink: ${item.ddg.abstractUrl}\n`;
-      }
-      if (item.ddg?.answer) brief += `Instant answer: ${item.ddg.answer}\n`;
-      brief += "\n";
+    brief += "INTERNET RESULTS (use these to answer; cite links):\n";
+    (hits.length ? hits : collectWebHits(research)).slice(0, 8).forEach((h, i) => {
+      brief += `${i + 1}. ${h.title} [${h.source || "Web"}]\n${h.extract || h.text || ""}\nURL: ${h.url}\n\n`;
     });
     return brief;
   }
@@ -4716,30 +4771,37 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
       }
 
       const lastAssistant = [...aiHistory].reverse().find((m) => m.role === "assistant");
-      const subtopics = buildSubtopics(q, lastAssistant?.content || "");
-      typing.textContent = "Looking into that…";
+      typing.textContent = "Searching the internet…";
 
       const mathBlock = trySolveMath(q);
-      const research = await researchSubtopics(subtopics);
-      const brief = researchBriefText(q, subtopics, research, mathBlock);
+      const { queries, research, hits } = await searchInternet(q, lastAssistant?.content || "");
+      typing.textContent = hits.length
+        ? `Found ${hits.length} result${hits.length === 1 ? "" : "s"} — writing your answer…`
+        : "Putting an answer together…";
+
+      const brief = researchBriefText(q, queries, research, mathBlock, hits);
 
       let content;
       let followups = [];
+      let sources = hits.slice(0, 5);
       if (state.settings.aiKey) {
-        typing.textContent = "Putting it into words…";
         try {
-          content = await askLlmChat(q, brief);
+          content = await askLlmChat(
+            q,
+            `${brief}\nAnswer using these internet results. Speak naturally and include the source links.`
+          );
           followups = extractFollowups(content, q, research);
         } catch (err) {
-          const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length);
+          const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length, hits);
           content = `${local.content}\n\n(Quick note: my smarter chat brain hiccuped — ${err.message})`;
           followups = local.followups;
+          sources = local.sources || sources;
         }
       } else {
-        typing.textContent = "Putting it into words…";
-        const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length);
+        const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length, hits);
         content = local.content;
         followups = local.followups;
+        sources = local.sources || sources;
       }
 
       const cleaned = content
@@ -4750,8 +4812,9 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
       aiHistory.push({
         role: "assistant",
         content: cleaned,
-        subtopics,
+        subtopics: queries,
         followups,
+        sources,
       });
     } catch (err) {
       const msg = err?.message || "Something went wrong.";
@@ -4760,8 +4823,8 @@ Include a couple markdown links when useful. Be accurate. Don't take invigilated
         role: "assistant",
         content:
           (mathBlock ? `${mathBlock}\n\n` : "") +
-          `Ugh, something glitched on my side: ${msg}\n\nTry saying it again like you'd text a friend?`,
-        followups: ["Help me with math", "Explain something simply", "I just wanna chat"],
+          `Ugh, the internet search glitched: ${msg}\n\nTry asking again — I'll search the web for an answer.`,
+        followups: ["Search for photosynthesis", "Who invented the telephone?", "What is gravity?"],
       });
     } finally {
       setAiBusy(false);
