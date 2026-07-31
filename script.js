@@ -782,6 +782,7 @@
       aiModel: "openai/gpt-oss-20b:free",
     };
     aiHistory.length = 0;
+    aiUserName = "";
     renderAiChat();
     applyBrightnessSetting();
     applyAudioSettings();
@@ -4094,14 +4095,17 @@
     };
   }
 
-  /* ---------- AI Mode (research + conversation + math) ---------- */
-  const AI_SYSTEM = `You are AI Mode inside "study with games" — Google AI Mode style.
-You have advanced reasoning, strong math, and conversational memory.
-Use the RESEARCH BRIEF when provided: it contains subtopic searches and web snippets.
-Structure answers with a clear overview, deeper sections, step-by-step math when needed, and 2-4 follow-up questions.
-Include helpful markdown links from the research brief.
-Keep a natural back-and-forth: reference earlier turns, ask clarifying questions, and go deeper when asked.
-Be accurate and encouraging. Teach; do not take invigilated exams for the student.`;
+  /* ---------- AI Mode (human chat + research + math) ---------- */
+  const AI_SYSTEM = `You are a friendly study buddy inside "study with games".
+Talk like a real person: warm, clear, natural — contractions are good. Not stiff, not corporate, not a search-results page.
+You can chat about feelings, stress, jokes, and everyday stuff AND help with homework.
+Remember the conversation and reply like you're texting a smart friend who happens to be great at school.
+When a RESEARCH BRIEF is provided, weave the facts into normal sentences. Don't dump headings like "Overview" unless it really helps.
+For math: walk through steps out loud like you're at a desk together.
+End with 2-3 natural follow-up questions the student might actually say (e.g. "wait why though?", "can you give an example?").
+Include a couple markdown links when useful. Be accurate. Don't take invigilated exams for them — teach instead.`;
+
+  let aiUserName = "";
 
   function buildStarfield(el, count, sizeMin, sizeMax, colorChance) {
     if (!el) return;
@@ -4152,8 +4156,10 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
   function renderAiChat() {
     if (!els.aiChat) return;
     if (!aiHistory.length) {
-      els.aiChat.innerHTML = `<div class="ai-msg assistant"><h4>AI Mode</h4>Ask anything — homework, math, history, science, or keep chatting. I split questions into subtopics, search them in parallel, reason through an answer, and offer follow-ups with web links.${
-        state.settings.aiKey ? "" : "<br><br>Tip: add a free OpenRouter key in Settings for even deeper LLM reasoning."
+      els.aiChat.innerHTML = `<div class="ai-msg assistant">Hey${
+        aiUserName ? ` ${escapeHtml(aiUserName)}` : ""
+      } — what's up? You can talk to me normally. Stuck on homework, need a pep talk, want me to walk through math, or just vent about a test… I'm here.<br><br>Try: “hey I’m lost on fractions” or “can you explain this like I’m tired lol”${
+        state.settings.aiKey ? "" : "<br><br><span style=\"opacity:.75\">Optional: drop a free OpenRouter key in Settings if you want even richer chat.</span>"
       }</div>`;
       return;
     }
@@ -4162,14 +4168,13 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
         if (m.role === "user") {
           return `<div class="ai-msg user">${escapeHtml(m.content)}</div>`;
         }
-        const subs = m.subtopics?.length
-          ? `<p class="ai-subtopics">Searched: ${m.subtopics.map((s) => `<strong>${escapeHtml(s)}</strong>`).join(" · ")}</p>`
-          : "";
         const follows = (m.followups || [])
           .map((f) => `<button type="button" class="ai-chip" data-prompt="${escapeHtml(f)}">${escapeHtml(f)}</button>`)
           .join("");
-        const followBlock = follows ? `<div class="ai-followups">${follows}</div>` : "";
-        return `<div class="ai-msg assistant">${subs}${formatAiHtml(m.content)}${followBlock}</div>`;
+        const followBlock = follows
+          ? `<div class="ai-followups"><span class="ai-follow-label">Keep talking:</span>${follows}</div>`
+          : "";
+        return `<div class="ai-msg assistant">${formatAiHtml(m.content)}${followBlock}</div>`;
       })
       .join("");
     els.aiChat.scrollTop = els.aiChat.scrollHeight;
@@ -4178,9 +4183,93 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
   function setAiBusy(busy, label) {
     if (els.aiSend) {
       els.aiSend.disabled = busy;
-      els.aiSend.textContent = busy ? label || "Researching…" : "Ask AI Mode";
+      els.aiSend.textContent = busy ? label || "One sec…" : "Send";
     }
     if (els.aiInput) els.aiInput.disabled = busy;
+  }
+
+  function rememberNameFrom(text) {
+    const m = text.match(/(?:i(?:'| a)?m|my name is|call me)\s+([A-Za-z][A-Za-z'-]{1,20})/i);
+    if (m && !/^(stuck|lost|confused|good|fine|ok|okay|done|here|trying|stress|tired)/i.test(m[1])) {
+      aiUserName = m[1];
+    }
+  }
+
+  function isChitchat(q) {
+    const t = q.trim().toLowerCase().replace(/[!?.]+$/g, "");
+    if (t.length <= 2) return true;
+    const chatOnly = [
+      /^(hi|hey|hello|yo|sup|hiya|howdy)\b/,
+      /^(good )?(morning|afternoon|evening|night)\b/,
+      /^(how are you|how's it going|how r u|whats up|what's up|wyd)\b/,
+      /^(thanks|thank you|thx|ty|appreciate it)\b/,
+      /^(lol|lmao|haha|hehe|omg|wow|nice|cool|okay|ok|k|alright|bet|fr|true)\b/,
+      /^(bye|goodbye|see ya|later|gtg)\b/,
+      /^(i'?m )?(tired|stressed|sad|anxious|overwhelmed|bored|hungry)\b/,
+      /^(who are you|what are you|what can you do)\b/,
+      /^(love you|ily)\b/,
+    ];
+    if (chatOnly.some((re) => re.test(t))) return true;
+    // short social message with no study keywords
+    if (
+      t.length < 40 &&
+      !/\b(solve|explain|homework|math|equation|test|essay|history|science|why|how|what is|help me with)\b/i.test(t) &&
+      /^(hey|hi|yo|ok|okay|yeah|yep|nah|idk|hmm|wow)/i.test(t)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function chitchatReply(q) {
+    const t = q.trim().toLowerCase();
+    const name = aiUserName ? ` ${aiUserName}` : "";
+    if (/^(hi|hey|hello|yo|sup|hiya|howdy)\b/.test(t)) {
+      return {
+        content: `Hey${name}! Good to see you. What's going on — homework, a weird question, or you just wanna talk?`,
+        followups: ["I'm stuck on homework", "Can you help me with math?", "I just need to vent for a sec"],
+      };
+    }
+    if (/how are you|how's it going|how r u|what's up|whats up/.test(t)) {
+      return {
+        content: `I'm doing great${name} — ready to help. How are *you* doing? School treating you okay?`,
+        followups: ["I'm stressed about a test", "Yeah I'm good, help me study", "Can you explain something simply?"],
+      };
+    }
+    if (/thanks|thank you|thx|ty|appreciate/.test(t)) {
+      return {
+        content: `Anytime${name}! Seriously. Want to keep going, or take a break?`,
+        followups: ["Quiz me on what we just did", "Help with something else", "I'm good for now"],
+      };
+    }
+    if (/bye|goodbye|see ya|later|gtg/.test(t)) {
+      return {
+        content: `Later${name}! You got this. Come back anytime — even if it's just “ugh I don't get this.”`,
+        followups: ["One more quick question", "Give me a confidence boost"],
+      };
+    }
+    if (/tired|stressed|sad|anxious|overwhelmed|bored/.test(t)) {
+      return {
+        content: `Ugh, that's real${name}. School can pile up fast. Want to talk it out, or should we knock out one tiny homework thing together so it feels lighter?`,
+        followups: ["Let's do one small problem", "Just talk with me a bit", "Help me make a simple plan"],
+      };
+    }
+    if (/who are you|what are you|what can you do/.test(t)) {
+      return {
+        content: `I'm your study buddy in this app — talk to me like a normal person. I can chat, walk through math, explain topics in plain English, and look things up when we need facts.`,
+        followups: ["Help me with my homework", "Let's just chat", "Solve a math problem with me"],
+      };
+    }
+    if (/lol|lmao|haha|hehe|omg|wow|nice|cool|bet|fr|true/.test(t)) {
+      return {
+        content: `Haha fair${name}. What do you wanna dig into next?`,
+        followups: ["Explain that again simpler", "Give me an example", "New topic"],
+      };
+    }
+    return {
+      content: `Okay${name}, I'm with you. Tell me what's on your mind — school stuff or just whatever.`,
+      followups: ["I'm confused about something", "Help me solve a problem", "Can we talk through my homework?"],
+    };
   }
 
   function niceNum(n) {
@@ -4320,20 +4409,19 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       c -= rhs;
       const disc = b * b - 4 * a * c;
       let body =
-        `#### Math — quadratic\n` +
-        `Equation: \`${niceNum(a)}x² ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))}x ${c >= 0 ? "+" : "−"} ${niceNum(Math.abs(c))} = 0\`\n\n` +
-        `1) Identify a=${niceNum(a)}, b=${niceNum(b)}, c=${niceNum(c)}\n` +
-        `2) Discriminant Δ = b² − 4ac = ${niceNum(disc)}\n`;
+        `Okay, let's do this together.\n\n` +
+        `We've got \`${niceNum(a)}x² ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))}x ${c >= 0 ? "+" : "−"} ${niceNum(Math.abs(c))} = 0\`.\n\n` +
+        `So a=${niceNum(a)}, b=${niceNum(b)}, c=${niceNum(c)}.\n` +
+        `Discriminant Δ = b² − 4ac = ${niceNum(disc)}.\n`;
       if (disc < 0) {
-        body += `3) Δ < 0 → no real solutions (complex roots exist).\n`;
+        body += `Δ is negative, so no real solutions (only complex ones).\n`;
       } else {
         const r1 = (-b + Math.sqrt(disc)) / (2 * a);
         const r2 = (-b - Math.sqrt(disc)) / (2 * a);
         body +=
-          `3) x = (−b ± √Δ) / (2a)\n` +
-          `4) Solutions: **x = ${niceNum(r1)}**` +
-          (Math.abs(r1 - r2) > 1e-9 ? ` and **x = ${niceNum(r2)}**` : " (double root)") +
-          `\n`;
+          `Using x = (−b ± √Δ) / (2a), you get **x = ${niceNum(r1)}**` +
+          (Math.abs(r1 - r2) > 1e-9 ? ` and **x = ${niceNum(r2)}**` : " (it's a double root)") +
+          `.\n\nWant me to check one of those by plugging it back in?`;
       }
       return body;
     }
@@ -4347,11 +4435,10 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       if (a !== 0) {
         const x = (c - b) / a;
         return (
-          `#### Math — linear equation\n` +
-          `Solve \`${niceNum(a)}x ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))} = ${niceNum(c)}\`\n\n` +
-          `1) Subtract ${niceNum(b)} from both sides: \`${niceNum(a)}x = ${niceNum(c - b)}\`\n` +
-          `2) Divide by ${niceNum(a)}: **x = ${niceNum(x)}**\n` +
-          `3) Check: ${niceNum(a)}(${niceNum(x)}) ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))} = ${niceNum(c)} ✓`
+          `Alright, for \`${niceNum(a)}x ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))} = ${niceNum(c)}\`:\n\n` +
+          `First move the ${niceNum(b)} → \`${niceNum(a)}x = ${niceNum(c - b)}\`\n` +
+          `Then divide by ${niceNum(a)} → **x = ${niceNum(x)}**\n\n` +
+          `Quick check: ${niceNum(a)}(${niceNum(x)}) ${b >= 0 ? "+" : "−"} ${niceNum(Math.abs(b))} = ${niceNum(c)}. Nice.`
         );
       }
     }
@@ -4364,10 +4451,9 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       const c = Number(prop[3]);
       const x = (b * c) / a;
       return (
-        `#### Math — proportion\n` +
-        `\`${niceNum(a)}/${niceNum(b)} = ${niceNum(c)}/x\`\n\n` +
-        `Cross-multiply: ${niceNum(a)}·x = ${niceNum(b)}·${niceNum(c)}\n` +
-        `x = ${niceNum(b * c)} / ${niceNum(a)} = **${niceNum(x)}**`
+        `Proportion time: \`${niceNum(a)}/${niceNum(b)} = ${niceNum(c)}/x\`\n\n` +
+        `Cross-multiply → ${niceNum(a)}x = ${niceNum(b * c)}\n` +
+        `So **x = ${niceNum(x)}**.`
       );
     }
 
@@ -4377,10 +4463,7 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       const p = Number(pct[1]);
       const n = Number(pct[2]);
       const val = (p / 100) * n;
-      return (
-        `#### Math — percent\n` +
-        `${niceNum(p)}% of ${niceNum(n)} = (${niceNum(p)}/100) × ${niceNum(n)} = **${niceNum(val)}**`
-      );
+      return `Easy one — ${niceNum(p)}% of ${niceNum(n)} is (${niceNum(p)}/100) × ${niceNum(n)} = **${niceNum(val)}**.`;
     }
 
     // Fraction of: a/b of n
@@ -4390,10 +4473,7 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       const b = Number(fracOf[2]);
       const n = Number(fracOf[3]);
       const val = (a / b) * n;
-      return (
-        `#### Math — fraction\n` +
-        `${niceNum(a)}/${niceNum(b)} of ${niceNum(n)} = **${niceNum(val)}**`
-      );
+      return `${niceNum(a)}/${niceNum(b)} of ${niceNum(n)} comes out to **${niceNum(val)}**.`;
     }
 
     // Bare expression
@@ -4408,7 +4488,7 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
           // eslint-disable-next-line no-new-func
           const val = Function(`"use strict"; return (${expr});`)();
           if (typeof val === "number" && Number.isFinite(val)) {
-            return `#### Math — calculation\nExpression: \`${exprMatch[1].trim()}\`\nResult: **${niceNum(val)}**`;
+            return `That works out to **${niceNum(val)}** (from \`${exprMatch[1].trim()}\`).`;
           }
         } catch (_) {}
       }
@@ -4421,22 +4501,34 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
     const lines = String(answer).split("\n");
     for (const line of lines) {
       const m = line.match(/^(?:[-*•]|\d+\.)\s+(?:Follow[- ]?up:\s*)?(.+\?)\s*$/i);
-      if (m) follows.push(m[1].trim());
+      if (m) follows.push(m[1].replace(/^["']|["']$/g, "").trim());
     }
     const qLow = question.toLowerCase();
+    const topic = research?.[0]?.wiki?.title || "this";
     if (!follows.length) {
       if (/math|solve|equation|x\s*=/i.test(question) || trySolveMath(question)) {
-        follows.push("Can you give me a similar practice problem?");
-        follows.push("Explain that step more slowly");
+        follows.push("Wait, can you slow down on that one step?");
+        follows.push("Give me a similar problem to try");
+        follows.push("Why do we do it that way?");
       } else {
-        follows.push(`Give a simpler explanation of ${research?.[0]?.wiki?.title || "this"}`);
-        follows.push("Show a real-world example");
-        follows.push("Quiz me with 3 questions on this");
+        follows.push("Okay but explain it like I'm tired");
+        follows.push(`Can you give a real-life example of ${topic}?`);
+        follows.push("Quiz me so I know if I get it");
       }
-      if (/compare|vs|difference/i.test(qLow)) follows.push("Make a study table I can memorize");
-      if (/war|history|cause/i.test(qLow)) follows.push("What happened next?");
+      if (/compare|vs|difference/i.test(qLow)) follows.push("Can you make a tiny cheat-sheet table?");
+      if (/war|history|cause/i.test(qLow)) follows.push("What happened after that?");
+      if (/stress|tired|hard|confused|lost/i.test(qLow)) follows.push("Just encourage me for a sec");
     }
     return [...new Set(follows)].slice(0, 4);
+  }
+
+  function humanizeFact(text) {
+    if (!text) return "";
+    const t = text.trim();
+    if (/^[A-Z]/.test(t) && t.length > 80) {
+      return t;
+    }
+    return t;
   }
 
   function synthesizeFromResearch(question, research, mathBlock, priorTurns) {
@@ -4445,21 +4537,12 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
     let overview = "";
 
     for (const item of research) {
-      if (item.wiki?.extract && !overview) {
-        overview = item.wiki.extract;
-      } else if (item.ddg?.abstract && !overview) {
-        overview = item.ddg.abstract;
-      }
+      if (item.wiki?.extract && !overview) overview = item.wiki.extract;
+      else if (item.ddg?.abstract && !overview) overview = item.ddg.abstract;
       if (item.wiki?.extract) {
-        sections.push({
-          title: item.wiki.title || item.topic,
-          body: item.wiki.extract,
-        });
+        sections.push({ title: item.wiki.title || item.topic, body: item.wiki.extract });
       } else if (item.ddg?.abstract) {
-        sections.push({
-          title: item.ddg.heading || item.topic,
-          body: item.ddg.abstract,
-        });
+        sections.push({ title: item.ddg.heading || item.topic, body: item.ddg.abstract });
       }
       if (item.wiki?.url) links.push({ title: item.wiki.title || item.topic, url: item.wiki.url });
       if (item.ddg?.abstractUrl) {
@@ -4472,13 +4555,12 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       (item.ddg?.related || []).slice(0, 2).forEach((r) => links.push({ title: r.title, url: r.url }));
     }
 
-    // dedupe links
     const seen = new Set();
     const uniqueLinks = links.filter((l) => {
       if (!l.url || seen.has(l.url)) return false;
       seen.add(l.url);
       return true;
-    }).slice(0, 6);
+    }).slice(0, 4);
 
     const uniqueSections = [];
     const seenTitles = new Set();
@@ -4489,49 +4571,53 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       uniqueSections.push(s);
     }
 
-    let convoNote = "";
-    if (priorTurns >= 2) {
-      convoNote = `\nI'm keeping our thread going — tell me if you want this simpler, harder, or turned into practice.\n`;
+    const nameBit = aiUserName ? `, ${aiUserName}` : "";
+    const openers = [
+      `Okay${nameBit}, here's how I'd put it:`,
+      `Alright${nameBit} — so basically:`,
+      `Good question${nameBit}. Here's the deal:`,
+      `Yeah I got you${nameBit}. So:`,
+    ];
+    const opener = openers[Math.min(priorTurns, openers.length - 1) % openers.length];
+
+    let out = "";
+    if (mathBlock) {
+      out += `${mathBlock}\n`;
+      if (overview) out += `\nAnd if you want the idea behind it in words: ${humanizeFact(overview)}\n`;
+    } else if (overview) {
+      out += `${opener}\n\n${humanizeFact(overview)}\n`;
+    } else {
+      out += `Hmm, I didn't get a clean hit on that yet${nameBit}, but we can still figure it out together.\n`;
     }
 
-    let out = `#### Overview\n${overview || "I researched several angles of your question. Here's the clearest synthesis:"}\n`;
-    if (mathBlock) out += `\n${mathBlock}\n`;
-
-    uniqueSections.slice(0, 3).forEach((s, i) => {
-      if (i === 0 && s.body === overview) return;
-      out += `\n#### ${s.title}\n${s.body}\n`;
+    const extras = uniqueSections.filter((s) => s.body !== overview).slice(0, 2);
+    extras.forEach((s) => {
+      out += `\nAlso worth knowing about **${s.title}**: ${humanizeFact(s.body)}\n`;
     });
 
-    if (/study plan|how should i study|revise|review for/i.test(question)) {
+    if (/study plan|how should i study|revise|review for|stressed about a .*test/i.test(question)) {
       out +=
-        `\n#### Study plan\n` +
-        `1) 20 min — read the overview and write 5 key facts from memory\n` +
-        `2) 15 min — explain it out loud like teaching a friend\n` +
-        `3) 15 min — do 3 practice questions (ask me for them)\n` +
-        `4) 10 min — quick recap of mistakes only\n`;
+        `\nIf you want a chill plan: do 20 min reading + writing 5 facts from memory, 15 min explaining it out loud, 15 min practice questions, then 10 min only reviewing mistakes. Want me to quiz you after?\n`;
     }
 
     if (uniqueLinks.length) {
-      out += `\n#### Explore the web\n`;
+      out += `\nIf you wanna peek at sources:\n`;
       uniqueLinks.forEach((l) => {
         out += `- [${l.title}](${l.url})\n`;
       });
     }
 
-    out += convoNote;
-    out += `\n#### Go deeper\n`;
-    const follows = extractFollowups(out, question, research);
-    follows.forEach((f, i) => {
-      out += `${i + 1}. ${f}\n`;
-    });
+    if (priorTurns >= 3) {
+      out += `\nI'm still with you on this thread — say if you want it simpler, harder, or just a pep talk.\n`;
+    } else {
+      out += `\nDoes that make sense, or is some part still fuzzy?\n`;
+    }
 
     if (!overview && !mathBlock && !uniqueSections.length) {
       out =
-        `I couldn't find strong web matches yet, but we can still reason it out together.\n\n` +
-        `Try rephrasing with a topic name (e.g. "causes of World War I") or paste the exact homework problem.\n` +
-        (state.settings.aiKey
-          ? ""
-          : `\nFor broader free-form chat, add an OpenRouter key in Settings — AI Mode will still research the web first.`);
+        `I'm not totally sure what you mean yet${nameBit} — talk to me like you'd text a friend. ` +
+        `Like “I'm lost on fractions” or paste the exact problem.\n` +
+        (state.settings.aiKey ? "" : `\n(You can also add a free OpenRouter key in Settings for even more natural back-and-forth.)`);
     }
 
     return { content: out.trim(), followups: extractFollowups(out, question, research) };
@@ -4554,25 +4640,24 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
     return brief;
   }
 
-  async function askLlmWithResearch(question, brief) {
+  async function askLlmChat(question, brief) {
     const base = (state.settings.aiBase || "https://openrouter.ai/api/v1").replace(/\/$/, "");
     const model = state.settings.aiModel || "openai/gpt-oss-20b:free";
     const history = aiHistory
       .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-16)
+      .slice(-20)
       .map((m) => ({
         role: m.role,
-        content: m.role === "assistant" ? String(m.content).slice(0, 2500) : m.content,
+        content: m.role === "assistant" ? String(m.content).slice(0, 2200) : m.content,
       }));
+    const nameLine = aiUserName ? `Their name is ${aiUserName}. ` : "";
+    const userPayload = brief
+      ? `${question}\n\n(Some facts I looked up — weave them in naturally, don't sound like a report):\n${brief}\n\nReply like a real person texting a friend. Short paragraphs. End with 2-3 casual follow-up questions.`
+      : `${question}\n\nReply like a real person. Keep the vibe natural.`;
     const messages = [
-      { role: "system", content: AI_SYSTEM },
+      { role: "system", content: `${AI_SYSTEM}\n${nameLine}` },
       ...history.slice(0, -1),
-      {
-        role: "user",
-        content:
-          `${question}\n\n--- RESEARCH BRIEF (from parallel web search) ---\n${brief}\n--- END BRIEF ---\n` +
-          `Write a helpful AI Mode answer with overview, deeper sections, math steps if relevant, markdown links, and 3 follow-up questions.`,
-      },
+      { role: "user", content: userPayload },
     ];
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
@@ -4582,7 +4667,7 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
         "HTTP-Referer": location.origin || "https://study-with-games.local",
         "X-Title": "study with games AI Mode",
       },
-      body: JSON.stringify({ model, messages, temperature: 0.45 }),
+      body: JSON.stringify({ model, messages, temperature: 0.75 }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -4597,20 +4682,42 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
   async function askStudyAi(question) {
     const q = question.trim();
     if (!q) return;
+    rememberNameFrom(q);
     aiHistory.push({ role: "user", content: q });
     renderAiChat();
 
     const typing = document.createElement("div");
     typing.className = "ai-msg assistant typing";
-    typing.textContent = "AI Mode: splitting into subtopics and searching…";
+    typing.textContent = "One sec…";
     els.aiChat.appendChild(typing);
     els.aiChat.scrollTop = els.aiChat.scrollHeight;
-    setAiBusy(true, "Researching…");
+    setAiBusy(true, "One sec…");
 
     try {
+      // Pure human chat — no research dump
+      if (isChitchat(q) && !trySolveMath(q)) {
+        if (state.settings.aiKey) {
+          typing.textContent = "Thinking…";
+          try {
+            const content = await askLlmChat(q, null);
+            aiHistory.push({
+              role: "assistant",
+              content,
+              followups: extractFollowups(content, q, []),
+            });
+            return;
+          } catch (_) {
+            // fall through to local chitchat
+          }
+        }
+        const local = chitchatReply(q);
+        aiHistory.push({ role: "assistant", content: local.content, followups: local.followups });
+        return;
+      }
+
       const lastAssistant = [...aiHistory].reverse().find((m) => m.role === "assistant");
       const subtopics = buildSubtopics(q, lastAssistant?.content || "");
-      typing.textContent = `AI Mode: searching ${subtopics.length} angles in parallel…`;
+      typing.textContent = "Looking into that…";
 
       const mathBlock = trySolveMath(q);
       const research = await researchSubtopics(subtopics);
@@ -4619,26 +4726,26 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
       let content;
       let followups = [];
       if (state.settings.aiKey) {
-        typing.textContent = "AI Mode: reasoning with research…";
+        typing.textContent = "Putting it into words…";
         try {
-          content = await askLlmWithResearch(q, brief);
+          content = await askLlmChat(q, brief);
           followups = extractFollowups(content, q, research);
         } catch (err) {
           const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length);
-          content =
-            local.content +
-            `\n\n_(LLM unavailable: ${err.message}. Showing research synthesis instead.)_`;
+          content = `${local.content}\n\n(Quick note: my smarter chat brain hiccuped — ${err.message})`;
           followups = local.followups;
         }
       } else {
-        typing.textContent = "AI Mode: synthesizing answer…";
+        typing.textContent = "Putting it into words…";
         const local = synthesizeFromResearch(q, research, mathBlock, aiHistory.length);
         content = local.content;
         followups = local.followups;
       }
 
-      // strip trailing "Go deeper" numbered list from content if we render chips
-      const cleaned = content.replace(/\n#### Go deeper\n[\s\S]*$/i, "").trim();
+      const cleaned = content
+        .replace(/\n#### Go deeper\n[\s\S]*$/i, "")
+        .replace(/\n#### Overview\n/gi, "\n")
+        .trim();
 
       aiHistory.push({
         role: "assistant",
@@ -4653,8 +4760,8 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
         role: "assistant",
         content:
           (mathBlock ? `${mathBlock}\n\n` : "") +
-          `I hit a research snag: ${msg}\n\nAsk again, or rephrase the topic. You can also add an API key in Settings for LLM backup.`,
-        followups: ["Try a simpler version of that question", "Help me solve a math problem"],
+          `Ugh, something glitched on my side: ${msg}\n\nTry saying it again like you'd text a friend?`,
+        followups: ["Help me with math", "Explain something simply", "I just wanna chat"],
       });
     } finally {
       setAiBusy(false);
@@ -4671,6 +4778,7 @@ Be accurate and encouraging. Teach; do not take invigilated exams for the studen
 
   els.aiClear?.addEventListener("click", () => {
     aiHistory.length = 0;
+    aiUserName = "";
     renderAiChat();
   });
 

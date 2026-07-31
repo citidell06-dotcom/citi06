@@ -303,20 +303,20 @@
         <h2 id="ai-heading">AI Mode</h2>
         <span class="panel-chip" id="ai-status">Research</span>
       </div>
-      <p class="ai-intro">Ask anything. AI Mode splits your question into subtopics, searches them in parallel, reasons through the answer, and keeps the conversation going with follow-ups and web links.</p>
+      <p class="ai-intro">Just talk to me like a normal person — homework, rants, “wait I’m confused,” random questions, whatever. I’ll chat back, help with math, and look stuff up when it helps.</p>
       <div class="ai-suggestions" id="ai-suggestions">
-        <button type="button" class="ai-chip" data-prompt="Explain photosynthesis and why it matters for life on Earth">Photosynthesis deep dive</button>
-        <button type="button" class="ai-chip" data-prompt="Solve step by step: 2x^2 - 8x + 6 = 0">Quadratic equation</button>
-        <button type="button" class="ai-chip" data-prompt="Compare mitosis and meiosis with a table and examples">Mitosis vs meiosis</button>
-        <button type="button" class="ai-chip" data-prompt="What caused World War I? Break it into causes and give sources">WWI causes</button>
+        <button type="button" class="ai-chip" data-prompt="hey can you help me understand photosynthesis? I'm kinda lost">Hey, explain photosynthesis</button>
+        <button type="button" class="ai-chip" data-prompt="ok wait can you solve 2x^2 - 8x + 6 = 0 for me step by step?">Help me solve this</button>
+        <button type="button" class="ai-chip" data-prompt="yo what's the difference between mitosis and meiosis in plain English?">Mitosis vs meiosis</button>
+        <button type="button" class="ai-chip" data-prompt="I'm stressed about a history test tomorrow on WWI, can we just talk through the main causes?">Talk through WWI causes</button>
       </div>
       <div class="ai-chat" id="ai-chat" aria-live="polite"></div>
       <form class="ai-form" id="ai-form">
-        <label class="sr-only" for="ai-input">Ask AI Mode</label>
-        <textarea id="ai-input" rows="2" maxlength="4000" placeholder="Ask anything — homework, math, history, or keep chatting…" required></textarea>
+        <label class="sr-only" for="ai-input">Message AI Mode</label>
+        <textarea id="ai-input" rows="2" maxlength="4000" placeholder="Say anything… hey, help me with this, I’m stuck on…" required></textarea>
         <div class="ai-form-actions">
           <button type="button" class="btn btn-ghost" id="ai-clear">New chat</button>
-          <button type="submit" class="btn btn-primary" id="ai-send">Ask AI Mode</button>
+          <button type="submit" class="btn btn-primary" id="ai-send">Send</button>
         </div>
       </form>
     </section>

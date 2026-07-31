@@ -608,8 +608,16 @@ body {
 .ai-followups {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem;
   margin-top: 0.75rem;
+}
+
+.ai-follow-label {
+  width: 100%;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.1rem;
 }
 
 .ai-followups .ai-chip {
