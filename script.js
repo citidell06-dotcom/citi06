@@ -6858,6 +6858,17 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   syncSettingsUI();
   saveState();
 
+  function dismissWelcomeSplash() {
+    const splash = document.getElementById("welcome-splash");
+    if (!splash || splash.classList.contains("is-hiding")) return;
+    splash.classList.add("is-hiding");
+    window.setTimeout(() => splash.remove(), 750);
+  }
+
+  // Welcome screen — show briefly on enter, then fade away
+  window.setTimeout(dismissWelcomeSplash, 2800);
+  document.getElementById("welcome-splash")?.addEventListener("click", dismissWelcomeSplash);
+
   // Unlock Web Audio on first user gesture (browser autoplay policy)
   const unlockAudio = () => {
     getAudioCtx();
