@@ -26,6 +26,13 @@
       desc: "Golden sun over sea, clouds, and silhouettes.",
     },
     {
+      id: "starwars",
+      name: "Death Star",
+      rarity: "rare",
+      cost: RARITY_COST.rare,
+      desc: "Cinematic Death Star firing its green superlaser into the cosmos.",
+    },
+    {
       id: "blackhole",
       name: "TON 618",
       rarity: "epic",
@@ -1206,7 +1213,12 @@
   }
 
   function applyTheme(themeId) {
-    document.body.classList.remove("theme-sunset", "theme-blackhole", "theme-mario");
+    document.body.classList.remove(
+      "theme-sunset",
+      "theme-starwars",
+      "theme-blackhole",
+      "theme-mario"
+    );
     if (themeId && THEME_IDS.has(themeId)) {
       document.body.classList.add(`theme-${themeId}`);
     }
@@ -1408,6 +1420,7 @@
   function closeGameModal() {
     stopMiniGame();
     els.gameModal.hidden = true;
+    els.gameModal.querySelector(".modal-card-game")?.classList.remove("wide-game");
   }
 
   function startMiniGame(id) {

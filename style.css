@@ -1249,6 +1249,14 @@ body {
     radial-gradient(1px 1px at 70% 75%, #fff, transparent);
 }
 
+.preview-swatch.starwars {
+  background:
+    radial-gradient(circle at 22% 50%, #9aa3ad 0 10%, #4a5560 18%, transparent 28%),
+    linear-gradient(95deg, transparent 35%, rgba(57, 255, 120, 0.95) 48%, rgba(180, 255, 200, 0.7) 52%, transparent 70%),
+    radial-gradient(ellipse at 70% 40%, rgba(40, 255, 120, 0.35), transparent 45%),
+    linear-gradient(180deg, #02040c 0%, #0a1020 50%, #03060e 100%);
+}
+
 .theme-fx {
   position: fixed;
   inset: 0;
@@ -1259,7 +1267,8 @@ body {
 
 .sunset-scene,
 .ton618-scene,
-.mario-scene {
+.mario-scene,
+.starwars-scene {
   display: none;
   position: absolute;
   inset: 0;
@@ -1267,18 +1276,21 @@ body {
 
 body.theme-sunset .sunset-scene,
 body.theme-blackhole .ton618-scene,
-body.theme-mario .mario-scene {
+body.theme-mario .mario-scene,
+body.theme-starwars .starwars-scene {
   display: block;
 }
 
 body.theme-sunset,
 body.theme-blackhole,
-body.theme-mario {
+body.theme-mario,
+body.theme-starwars {
   background: #06101f;
 }
 
 body.theme-sunset .bg-glow,
-body.theme-blackhole .bg-glow {
+body.theme-blackhole .bg-glow,
+body.theme-starwars .bg-glow {
   opacity: 0;
 }
 
@@ -1656,6 +1668,345 @@ body.theme-blackhole .site-header,
 body.theme-blackhole .panel {
   background: rgba(6, 8, 18, 0.78);
   border-color: rgba(255, 160, 80, 0.18);
+}
+
+/* Death Star — cinematic superlaser */
+body.theme-starwars {
+  background: #02040c;
+}
+
+body.theme-starwars .bg-grid {
+  opacity: 0.06;
+  background-image:
+    linear-gradient(rgba(80, 255, 140, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80, 255, 140, 0.03) 1px, transparent 1px);
+}
+
+.sw-cosmos {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 60% at 70% 45%, rgba(20, 80, 50, 0.35) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 18% 55%, rgba(40, 60, 100, 0.25) 0%, transparent 50%),
+    linear-gradient(165deg, #010208 0%, #07101f 42%, #03060e 72%, #000 100%);
+}
+
+.sw-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sw-stars-far {
+  background-image:
+    radial-gradient(1px 1px at 4% 12%, #fff, transparent),
+    radial-gradient(1px 1px at 12% 40%, rgba(200, 230, 255, 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 22% 18%, #fff, transparent),
+    radial-gradient(1px 1px at 31% 68%, #fff, transparent),
+    radial-gradient(1px 1px at 44% 8%, rgba(220, 255, 240, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 58% 28%, #fff, transparent),
+    radial-gradient(1px 1px at 67% 74%, #eef, transparent),
+    radial-gradient(1px 1px at 78% 14%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 88% 52%, #fff, transparent),
+    radial-gradient(1px 1px at 94% 82%, rgba(200, 255, 220, 0.75), transparent),
+    radial-gradient(1px 1px at 8% 88%, #fff, transparent),
+    radial-gradient(1px 1px at 38% 48%, #dff, transparent),
+    radial-gradient(1px 1px at 72% 42%, #fff, transparent),
+    radial-gradient(1px 1px at 52% 90%, #fff, transparent);
+  animation: sw-star-drift 70s linear infinite;
+  opacity: 0.85;
+}
+
+.sw-stars-mid {
+  background-image:
+    radial-gradient(2px 2px at 16% 22%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 36% 60%, #efe, transparent),
+    radial-gradient(2px 2px at 64% 16%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 82% 66%, #dff, transparent),
+    radial-gradient(2px 2px at 91% 30%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 6% 54%, #cfe, transparent),
+    radial-gradient(2px 2px at 48% 84%, #fff, transparent);
+  animation: sw-twinkle 2.8s ease-in-out infinite alternate;
+}
+
+.sw-nebula {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 40% 28% at 78% 30%, rgba(30, 120, 70, 0.22), transparent 70%),
+    radial-gradient(ellipse 35% 25% at 30% 70%, rgba(40, 70, 140, 0.18), transparent 70%);
+  mix-blend-mode: screen;
+  animation: sw-nebula-pulse 10s ease-in-out infinite;
+}
+
+.sw-deathstar {
+  position: absolute;
+  left: 8%;
+  top: 50%;
+  width: min(42vw, 340px);
+  height: min(42vw, 340px);
+  transform: translateY(-52%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 30%, #c5ced8 0%, #8a949e 22%, #4e5864 48%, #2a323c 72%, #12161c 100%);
+  box-shadow:
+    inset -28px -18px 40px rgba(0, 0, 0, 0.55),
+    inset 12px 10px 24px rgba(255, 255, 255, 0.12),
+    0 0 60px rgba(80, 255, 140, 0.12),
+    0 0 120px rgba(40, 200, 100, 0.08);
+  overflow: hidden;
+  z-index: 2;
+}
+
+.sw-surface {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-linear-gradient(
+      105deg,
+      transparent 0 7px,
+      rgba(0, 0, 0, 0.08) 7px 8px
+    ),
+    repeating-linear-gradient(
+      15deg,
+      transparent 0 11px,
+      rgba(255, 255, 255, 0.04) 11px 12px
+    );
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.sw-trench {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 7%;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(10, 14, 20, 0.85) 40%,
+    rgba(0, 0, 0, 0.9) 60%,
+    rgba(0, 0, 0, 0.2)
+  );
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+
+.sw-dish {
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  left: 58%;
+  top: 22%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 45% 45%, #6a7480 0%, #3a444e 55%, #1a2028 100%);
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.55),
+    0 0 16px rgba(60, 255, 140, 0.25);
+  z-index: 3;
+}
+
+.sw-dish::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #9dffc0 0%, #24e06a 40%, #0a3a22 75%, #05140c 100%);
+  box-shadow:
+    0 0 18px rgba(60, 255, 140, 0.85),
+    0 0 40px rgba(40, 255, 120, 0.45);
+  animation: sw-dish-charge 2.4s ease-in-out infinite;
+}
+
+.sw-laser-core {
+  position: absolute;
+  width: 10%;
+  height: 10%;
+  left: 67%;
+  top: 31%;
+  border-radius: 50%;
+  background: #e8ffe8;
+  box-shadow:
+    0 0 12px 4px rgba(180, 255, 200, 0.95),
+    0 0 30px 10px rgba(57, 255, 120, 0.7);
+  z-index: 4;
+  animation: sw-core-pulse 1.2s ease-in-out infinite;
+}
+
+.sw-beam {
+  position: absolute;
+  left: calc(8% + min(42vw, 340px) * 0.72);
+  top: 50%;
+  width: min(70vw, 780px);
+  height: 10px;
+  transform: translateY(-50%) rotate(-2deg);
+  transform-origin: left center;
+  background: linear-gradient(
+    90deg,
+    rgba(230, 255, 230, 1) 0%,
+    rgba(80, 255, 140, 0.95) 12%,
+    rgba(40, 230, 110, 0.85) 45%,
+    rgba(40, 255, 120, 0.35) 78%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 10px 2px rgba(180, 255, 200, 0.9),
+    0 0 28px 8px rgba(57, 255, 120, 0.65),
+    0 0 60px 16px rgba(40, 200, 100, 0.35);
+  border-radius: 999px;
+  z-index: 3;
+  animation: sw-beam-fire 2.4s ease-in-out infinite;
+  filter: saturate(1.3);
+}
+
+.sw-beam-glow {
+  position: absolute;
+  left: calc(8% + min(42vw, 340px) * 0.65);
+  top: 50%;
+  width: min(75vw, 820px);
+  height: 48px;
+  transform: translateY(-50%) rotate(-2deg);
+  transform-origin: left center;
+  background: linear-gradient(
+    90deg,
+    rgba(120, 255, 170, 0.45) 0%,
+    rgba(57, 255, 120, 0.22) 40%,
+    rgba(40, 255, 120, 0.08) 75%,
+    transparent 100%
+  );
+  filter: blur(10px);
+  z-index: 2;
+  animation: sw-beam-fire 2.4s ease-in-out infinite;
+}
+
+.sw-flare {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  mix-blend-mode: screen;
+  animation: sw-flare-pulse 2.4s ease-in-out infinite;
+}
+
+.sw-flare.f1 {
+  left: calc(8% + min(42vw, 340px) * 0.7);
+  top: 46%;
+  width: 90px;
+  height: 90px;
+  background: radial-gradient(circle, rgba(220, 255, 230, 0.95) 0%, rgba(57, 255, 120, 0.45) 35%, transparent 70%);
+  transform: translate(-50%, -50%);
+}
+
+.sw-flare.f2 {
+  left: 48%;
+  top: 48%;
+  width: 34px;
+  height: 34px;
+  background: radial-gradient(circle, rgba(180, 255, 200, 0.8), transparent 70%);
+  animation-delay: 0.15s;
+}
+
+.sw-flare.f3 {
+  left: 62%;
+  top: 44%;
+  width: 18px;
+  height: 18px;
+  background: radial-gradient(circle, rgba(255, 255, 220, 0.75), transparent 70%);
+  animation-delay: 0.3s;
+}
+
+.sw-flare.f4 {
+  left: 76%;
+  top: 51%;
+  width: 52px;
+  height: 14px;
+  border-radius: 40%;
+  background: radial-gradient(ellipse, rgba(100, 255, 160, 0.55), transparent 70%);
+  transform: rotate(-8deg);
+  animation-delay: 0.2s;
+}
+
+.sw-label {
+  position: absolute;
+  right: 1.2rem;
+  bottom: 1.2rem;
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  color: rgba(120, 255, 170, 0.55);
+  text-shadow: 0 0 12px rgba(57, 255, 120, 0.35);
+}
+
+@keyframes sw-star-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-24px); }
+}
+
+@keyframes sw-twinkle {
+  from { opacity: 0.5; }
+  to { opacity: 1; }
+}
+
+@keyframes sw-nebula-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+@keyframes sw-dish-charge {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.08); filter: brightness(1.35); }
+}
+
+@keyframes sw-core-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+@keyframes sw-beam-fire {
+  0%, 100% { opacity: 0.82; filter: brightness(1) saturate(1.2); }
+  45% { opacity: 1; filter: brightness(1.25) saturate(1.45); }
+  70% { opacity: 0.9; }
+}
+
+@keyframes sw-flare-pulse {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.92); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+.sw-flare.f2,
+.sw-flare.f3,
+.sw-flare.f4 {
+  transform: none;
+}
+
+@keyframes sw-flare-pulse-alt {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.95; }
+}
+
+.sw-flare.f2,
+.sw-flare.f3,
+.sw-flare.f4 {
+  animation-name: sw-flare-pulse-alt;
+}
+
+body.theme-starwars .site-header,
+body.theme-starwars .panel {
+  background: rgba(4, 10, 18, 0.8);
+  border-color: rgba(57, 255, 120, 0.22);
+  box-shadow: 0 0 0 1px rgba(57, 255, 120, 0.08), 0 18px 40px rgba(0, 0, 0, 0.4);
+}
+
+body.theme-starwars .brand-title,
+body.theme-starwars .panel-chip {
+  color: #9dffc0;
+}
+
+body.theme-starwars .brand-mark {
+  background: linear-gradient(135deg, #39ff78, #9dffc0);
+  box-shadow: 0 0 18px rgba(57, 255, 120, 0.45);
 }
 
 /* Mario World aesthetic */
