@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>study with games</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="welcome-splash" id="welcome-splash" role="status" aria-live="polite">
+    <div class="welcome-splash-inner">
+      <p class="welcome-kicker">ready to focus</p>
+      <h2 class="welcome-title">Welcome to<br />study with games</h2>
+    </div>
+  </div>
+
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <div class="theme-fx" aria-hidden="true">
+    <div class="sunset-scene">
+      <div class="sunset-sky"></div>
+      <div class="sunset-sun"></div>
+      <div class="sunset-sun-glow"></div>
+      <div class="sunset-rays"></div>
+      <div class="sunset-cloud c1"></div>
+      <div class="sunset-cloud c2"></div>
+      <div class="sunset-cloud c3"></div>
+      <div class="sunset-sea"></div>
+      <div class="sunset-sea-shimmer"></div>
+      <div class="sunset-silhouette"></div>
+    </div>
+    <div class="ton618-scene">
+      <div class="ton-stars"></div>
+      <div class="ton-stars ton-stars-far"></div>
+      <div class="ton-stars ton-stars-near"></div>
+      <div class="ton-disk"></div>
+      <div class="ton-disk-inner"></div>
+      <div class="ton-photon"></div>
+      <div class="ton-horizon"></div>
+      <div class="ton-jet left"></div>
+      <div class="ton-jet right"></div>
+      <div class="ton-label">TON 618</div>
+    </div>
+    <div class="starwars-scene">
+      <div class="sw-cosmos"></div>
+      <div class="sw-stars sw-stars-far"></div>
+      <div class="sw-stars sw-stars-mid"></div>
+      <div class="sw-starfield" id="sw-starfield-far" aria-hidden="true"></div>
+      <div class="sw-starfield sw-starfield-mid" id="sw-starfield-mid" aria-hidden="true"></div>
+      <div class="sw-starfield sw-starfield-near" id="sw-starfield-near" aria-hidden="true"></div>
+      <div class="sw-nebula"></div>
+      <div class="sw-nebula sw-nebula-2"></div>
+      <div class="sw-planet" aria-hidden="true"></div>
+      <div class="sw-deathstar">
+        <div class="sw-surface"></div>
+        <div class="sw-panels"></div>
+        <div class="sw-trench"></div>
+        <div class="sw-equator"></div>
+        <div class="sw-dish"></div>
+        <div class="sw-laser-core"></div>
+        <div class="sw-shade"></div>
+      </div>
+      <div class="sw-beam-glow"></div>
+      <div class="sw-beam-bloom"></div>
+      <div class="sw-beam"></div>
+      <div class="sw-beam-core"></div>
+      <div class="sw-flare f1"></div>
+      <div class="sw-flare f2"></div>
+      <div class="sw-flare f3"></div>
+      <div class="sw-flare f4"></div>
+      <div class="sw-flare f5"></div>
+      <div class="sw-dust"></div>
+      <div class="sw-label">DEATH STAR</div>
+    </div>
+    <div class="mario-scene">
+      <div class="mario-sky"></div>
+      <div class="mario-cloud mc1"></div>
+      <div class="mario-cloud mc2"></div>
+      <div class="mario-cloud mc3"></div>
+      <div class="mario-hill mh1"></div>
+      <div class="mario-hill mh2"></div>
+      <div class="mario-bush mb1"></div>
+      <div class="mario-bush mb2"></div>
+      <div class="mario-bush mb3"></div>
+      <div class="mario-pipe mp1"><span class="pipe-lip"></span></div>
+      <div class="mario-pipe mp2"><span class="pipe-lip"></span></div>
+      <div class="mario-blocks">
+        <span class="brick"></span><span class="brick"></span><span class="qblock"></span><span class="brick"></span>
+        <span class="qblock"></span><span class="brick"></span><span class="brick"></span>
+      </div>
+      <div class="mario-blocks mario-blocks-2">
+        <span class="qblock"></span><span class="brick"></span><span class="brick"></span><span class="qblock"></span>
+      </div>
+      <div class="mario-ground">
+        <div class="mario-ground-top"></div>
+      </div>
+    </div>
+  </div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <h1 class="brand-title">study with games</h1>
+    </div>
+    <p class="brand-tagline">Level up your focus. Clear your quests. Stay in the zone.</p>
+    <div class="header-stats">
+      <div class="token-badge" title="Earn 1 token each level-up">
+        <span class="token-icon" aria-hidden="true">◈</span>
+        <span id="token-count">0</span>
+        <span class="token-label">tokens</span>
+      </div>
+      <div class="streak-badge" id="streak-badge" title="Daily streak">
+        <div class="streak-fire" id="streak-fire" data-stage="child" aria-hidden="true">
+          <div class="fire-body"></div>
+          <div class="fire-face">
+            <span class="fire-eye"></span>
+            <span class="fire-eye"></span>
+            <span class="fire-mouth"></span>
+          </div>
+        </div>
+        <div class="streak-meta">
+          <span class="streak-count"><span id="streak-days">0</span> day streak</span>
+          <span class="streak-stage" id="streak-stage">Spark</span>
+        </div>
+      </div>
+      <button type="button" class="settings-cog" id="settings-open" aria-label="Open settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.5a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.68.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.58-.23 1.13-.54 1.63-.94l2.39.96c.25.1.54 0 .68-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="modal" id="settings-modal" hidden>
+    <div class="modal-card settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <button type="button" class="modal-close" id="settings-close" aria-label="Close settings">×</button>
+      <h2 id="settings-title">Settings</h2>
+      <label class="settings-row">
+        <span>Game brightness</span>
+        <input type="range" id="setting-brightness" min="50" max="150" value="100" />
+        <em id="setting-brightness-val">100%</em>
+      </label>
+      <label class="settings-row">
+        <span>Sound volume</span>
+        <input type="range" id="setting-sound" min="0" max="100" value="80" />
+        <em id="setting-sound-val">80%</em>
+      </label>
+      <label class="settings-row">
+        <span>Music volume</span>
+        <input type="range" id="setting-music" min="0" max="100" value="70" />
+        <em id="setting-music-val">70%</em>
+      </label>
+      <label class="settings-check">
+        <input type="checkbox" id="setting-mute" />
+        <span>Mute all audio</span>
+      </label>
+      <hr class="settings-divider" />
+      <h3 class="settings-sub">AI Mode</h3>
+      <p class="settings-hint">AI Mode researches the web in the language you type (plus English backup). Optional: add a free <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> or OpenAI key for deeper LLM wording in your language.</p>
+      <label class="settings-row settings-row-stack">
+        <span>AI API key</span>
+        <input type="password" id="setting-ai-key" placeholder="sk-… or OpenRouter key" autocomplete="off" />
+      </label>
+      <label class="settings-row settings-row-stack">
+        <span>API base URL</span>
+        <input type="url" id="setting-ai-base" placeholder="https://openrouter.ai/api/v1" />
+      </label>
+      <label class="settings-row settings-row-stack">
+        <span>Model</span>
+        <input type="text" id="setting-ai-model" placeholder="openai/gpt-oss-20b:free" />
+      </label>
+    </div>
+  </div>
+
+  <main class="layout">
+    <section class="panel stats-panel" aria-labelledby="stats-heading">
+      <div class="panel-head">
+        <h2 id="stats-heading">Study Stats</h2>
+        <span class="panel-chip" id="study-rank">Noob</span>
+      </div>
+      <div class="study-hours" id="study-hours">0.0 hours studied</div>
+      <div class="study-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="study-bar-wrap">
+        <div class="study-fill" id="study-fill"></div>
+      </div>
+      <p class="study-hint" id="study-hint">Next rank in 30 min · Complete focus sessions to climb.</p>
+      <p class="quest-stat">Quests completed: <strong id="quests-completed">0</strong></p>
+      <button type="button" class="btn btn-ghost reset-btn" id="reset-progress">Reset all progress</button>
+    </section>
+    <section class="panel xp-panel" aria-labelledby="xp-heading">
+      <div class="panel-head">
+        <h2 id="xp-heading">Level &amp; XP</h2>
+        <span class="panel-chip" id="level-badge">LVL 1 / 100</span>
+      </div>
+
+      <div class="xp-row">
+        <div class="xp-main">
+          <div class="xp-meta">
+            <span id="xp-current">0</span>
+            <span class="xp-sep">/</span>
+            <span id="xp-needed">100</span>
+            <span class="xp-label">XP</span>
+          </div>
+          <div class="xp-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="xp-bar-wrap">
+            <div class="xp-fill" id="xp-fill"></div>
+          </div>
+          <p class="xp-hint" id="xp-hint">Complete quests and focus sessions to earn XP.</p>
+        </div>
+
+        <aside class="enemy" id="enemy" data-form="1" data-phase="0" aria-label="Study foe">
+          <div class="enemy-sprite" aria-hidden="true">
+            <svg class="enemy-svg" id="enemy-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+          <div class="enemy-info">
+            <p class="enemy-name" id="enemy-name">Sloth Imp</p>
+            <p class="enemy-power" id="enemy-power">PWR 12</p>
+            <div class="enemy-stat">
+              <span>ATK</span>
+              <div class="enemy-stat-track"><div class="enemy-stat-fill atk" id="enemy-atk-fill"></div></div>
+            </div>
+            <div class="enemy-stat">
+              <span>HP</span>
+              <div class="enemy-stat-track"><div class="enemy-stat-fill hp" id="enemy-hp-fill"></div></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="panel quest-panel" aria-labelledby="quest-heading">
+      <div class="panel-head">
+        <h2 id="quest-heading">Quest Log</h2>
+        <span class="panel-chip" id="quest-count">0 active</span>
+      </div>
+
+      <div class="quest-tabs" role="tablist" aria-label="Quest views">
+        <button type="button" class="quest-tab active" role="tab" aria-selected="true" data-tab="active" id="tab-active">Active</button>
+        <button type="button" class="quest-tab" role="tab" aria-selected="false" data-tab="completed" id="tab-completed">Completed</button>
+      </div>
+
+      <div class="quest-tab-panel" id="quest-panel-active" data-panel="active">
+        <form class="quest-form" id="quest-form">
+          <label class="sr-only" for="quest-input">New quest</label>
+          <input
+            type="text"
+            id="quest-input"
+            name="quest"
+            placeholder="Add a study quest…"
+            maxlength="80"
+            autocomplete="off"
+            required
+          />
+          <fieldset class="difficulty-picker">
+            <legend class="sr-only">Quest difficulty</legend>
+            <label class="diff-option" data-diff="easy">
+              <input type="radio" name="difficulty" value="easy" checked />
+              <span>Easy</span>
+            </label>
+            <label class="diff-option" data-diff="medium">
+              <input type="radio" name="difficulty" value="medium" />
+              <span>Medium</span>
+            </label>
+            <label class="diff-option" data-diff="hard">
+              <input type="radio" name="difficulty" value="hard" />
+              <span>Hard</span>
+            </label>
+          </fieldset>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </form>
+
+        <ul class="quest-list" id="quest-list" aria-live="polite"></ul>
+        <p class="empty-state" id="quest-empty">No quests yet. Add one to begin.</p>
+      </div>
+
+      <div class="quest-tab-panel" id="quest-panel-completed" data-panel="completed" hidden>
+        <ul class="quest-list completed-log" id="completed-list" aria-live="polite"></ul>
+        <p class="empty-state" id="completed-empty">No completed quests yet.</p>
+      </div>
+    </section>
+
+    <section class="panel timer-panel" aria-labelledby="timer-heading">
+      <div class="panel-head">
+        <h2 id="timer-heading">Pomodoro Timer</h2>
+        <span class="panel-chip" id="timer-mode">Focus</span>
+      </div>
+
+      <div class="timer-display" id="timer-display" aria-live="polite">
+        <span id="timer-minutes">25</span><span class="timer-colon">:</span><span id="timer-seconds">00</span>
+      </div>
+
+      <div class="timer-modes" role="group" aria-label="Timer mode">
+        <button type="button" class="mode-btn active" data-mode="focus" data-seconds="1500" id="mode-focus">Focus 25</button>
+        <button type="button" class="mode-btn" data-mode="short" data-seconds="300" id="mode-short">Break 5</button>
+        <button type="button" class="mode-btn" data-mode="long" data-seconds="900" id="mode-long">Break 15</button>
+      </div>
+
+      <div class="timer-durations" aria-label="Customize timer lengths">
+        <p class="timer-dur-title">Customize times</p>
+        <label class="timer-dur-row">
+          <span>Focus</span>
+          <input type="number" id="dur-focus" min="0" max="180" value="25" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="focus">Off</button>
+        </label>
+        <label class="timer-dur-row">
+          <span>Short break</span>
+          <input type="number" id="dur-short" min="0" max="180" value="5" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="short">Off</button>
+        </label>
+        <label class="timer-dur-row">
+          <span>Long break</span>
+          <input type="number" id="dur-long" min="0" max="180" value="15" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="long">Off</button>
+        </label>
+        <label class="timer-dur-row">
+          <span>Rest popup</span>
+          <input type="number" id="dur-rest" min="0" max="60" value="5" inputmode="numeric" />
+          <span class="dur-unit">min</span>
+          <button type="button" class="dur-off-btn" data-dur-off="rest">Off</button>
+        </label>
+        <p class="timer-dur-hint">0 or Off disables that mode. Focus Off unlocks games anytime.</p>
+      </div>
+
+      <div class="timer-controls">
+        <button type="button" class="btn btn-primary" id="timer-toggle">Start</button>
+        <button type="button" class="btn btn-ghost" id="timer-reset">Reset</button>
+      </div>
+
+      <p class="timer-hint" id="timer-hint">Finish a focus session for +25 XP.</p>
+    </section>
+
+    <section class="panel ai-panel" aria-labelledby="ai-heading">
+      <div class="panel-head">
+        <h2 id="ai-heading">AI Mode</h2>
+        <span class="panel-chip" id="ai-status">Research</span>
+      </div>
+      <p class="ai-intro">Ask any real question in any language — PulseSearch digs for sources that answer <em>that</em> question, then replies with a direct answer and links.</p>
+      <div class="ai-suggestions" id="ai-suggestions">
+        <button type="button" class="ai-chip" data-prompt="hey can you help me understand photosynthesis? I'm kinda lost">Hey, explain photosynthesis</button>
+        <button type="button" class="ai-chip" data-prompt="ok wait can you solve 2x^2 - 8x + 6 = 0 for me step by step?">Help me solve this</button>
+        <button type="button" class="ai-chip" data-prompt="yo what's the difference between mitosis and meiosis in plain English?">Mitosis vs meiosis</button>
+        <button type="button" class="ai-chip" data-prompt="I'm stressed about a history test tomorrow on WWI, can we just talk through the main causes?">Talk through WWI causes</button>
+      </div>
+      <div class="ai-chat" id="ai-chat" aria-live="polite"></div>
+      <form class="ai-form" id="ai-form">
+        <label class="sr-only" for="ai-input">Message AI Mode</label>
+        <textarea id="ai-input" rows="2" maxlength="4000" placeholder="Say anything… hey, help me with this, I’m stuck on…" required></textarea>
+        <div class="ai-form-actions">
+          <button type="button" class="btn btn-ghost" id="ai-clear">New chat</button>
+          <button type="submit" class="btn btn-primary" id="ai-send">Send</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel shop-panel" aria-labelledby="shop-heading">
+      <div class="panel-head">
+        <h2 id="shop-heading">Token Shop</h2>
+        <span class="panel-chip">1 token / level</span>
+      </div>
+      <p class="shop-intro">Spend tokens on themes and games. Games stay locked until you finish a Focus session. Solitaire 1 · Common 2 · Rare 3 · Epic 6 · Legendary 9.</p>
+
+      <h3 class="shop-subhead">Themes</h3>
+      <div class="shop-grid" id="theme-shop"></div>
+
+      <h3 class="shop-subhead">Games</h3>
+      <div class="shop-grid" id="game-shop"></div>
+    </section>
+  </main>
+
+  <div class="modal" id="reward-modal" hidden>
+    <div class="modal-card modal-card-rest" role="dialog" aria-modal="true" aria-labelledby="reward-title">
+      <button type="button" class="modal-close" id="reward-close" aria-label="Close">×</button>
+      <h2 id="reward-title">Rest break</h2>
+      <p class="modal-copy" id="reward-copy">Play a game or just breathe. Quests can wait.</p>
+      <div class="rest-countdown" aria-live="polite">
+        <span id="rest-minutes">5</span><span class="timer-colon">:</span><span id="rest-seconds">00</span>
+      </div>
+      <p class="rest-label">time left to rest &amp; play</p>
+      <div class="reward-games" id="reward-games"></div>
+      <button type="button" class="btn btn-ghost" id="reward-skip">Skip rest</button>
+    </div>
+  </div>
+
+  <div class="modal" id="game-modal" hidden>
+    <div class="modal-card modal-card-game" role="dialog" aria-modal="true" aria-labelledby="game-title">
+      <div class="game-bar">
+        <h2 id="game-title">Game</h2>
+        <p class="game-score" id="game-score">Score 0</p>
+        <button type="button" class="modal-close" id="game-close" aria-label="Close game">×</button>
+      </div>
+      <p class="game-help" id="game-help"></p>
+      <canvas id="game-canvas" width="360" height="480"></canvas>
+      <div class="game-actions">
+        <button type="button" class="btn btn-primary" id="game-restart">Restart</button>
+        <button type="button" class="btn btn-ghost" id="game-quit">Quit</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
