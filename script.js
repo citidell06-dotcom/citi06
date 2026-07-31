@@ -4383,6 +4383,7 @@
     els.gameCanvas.width = W;
     els.gameCanvas.height = H;
     let paddle, ball, bricks, score, over, won, last;
+    let bossMusic = false;
 
     function reset() {
       paddle = { x: W / 2, y: H - 28, w: 70, h: 12 };
@@ -4412,8 +4413,6 @@
       setScore(0);
       last = performance.now();
     }
-
-    let bossMusic = false;
 
     function draw() {
       gctx.fillStyle = "#050b14";
