@@ -1562,7 +1562,7 @@
     });
   }
 
-  function applyTimerDurations({ keepMode = true } = {}) {
+  function applyTimerDurations({ keepMode = true, focusReenabled = false } = {}) {
     refreshModeButtons();
     syncTimerDurationUI();
 
@@ -1588,12 +1588,14 @@
       renderTimer();
     }
 
-    // Focus Off keeps games unlocked; turning Focus back on locks until a session finishes
+    // Focus Off = games always available; re-enabling Focus locks until a session finishes
     if (isModeOff("focus")) {
       unlockGames();
     } else {
-      gamesUnlocked = false;
-      if (els.gameModal && !els.gameModal.hidden) closeGameModal();
+      if (focusReenabled) {
+        gamesUnlocked = false;
+        if (els.gameModal && !els.gameModal.hidden) closeGameModal();
+      }
       if (els.gameShop) renderShop();
       renderTimer();
     }
@@ -1755,6 +1757,7 @@
   }
 
   function persistTimerDurations(fromOffBtn) {
+    const prevFocus = getTimerMins("focus");
     const focus = readDurInput(els.durFocus, 180);
     const short = readDurInput(els.durShort, 180);
     const long = readDurInput(els.durLong, 180);
@@ -1764,8 +1767,10 @@
     if (long != null) state.settings.timerMins.long = long;
     if (rest != null) state.settings.timerMins.rest = rest;
     saveState();
-    applyTimerDurations();
+    const focusReenabled = prevFocus <= 0 && getTimerMins("focus") > 0;
+    applyTimerDurations({ focusReenabled });
     if (fromOffBtn) showToast("Mode turned Off");
+    else if (focusReenabled) showToast("Focus on — games lock until a session finishes");
   }
 
   ["durFocus", "durShort", "durLong", "durRest"].forEach((key) => {
