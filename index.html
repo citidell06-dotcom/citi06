@@ -42,19 +42,31 @@
       <div class="sw-cosmos"></div>
       <div class="sw-stars sw-stars-far"></div>
       <div class="sw-stars sw-stars-mid"></div>
+      <div class="sw-starfield" id="sw-starfield-far" aria-hidden="true"></div>
+      <div class="sw-starfield sw-starfield-mid" id="sw-starfield-mid" aria-hidden="true"></div>
+      <div class="sw-starfield sw-starfield-near" id="sw-starfield-near" aria-hidden="true"></div>
       <div class="sw-nebula"></div>
+      <div class="sw-nebula sw-nebula-2"></div>
+      <div class="sw-planet" aria-hidden="true"></div>
       <div class="sw-deathstar">
-        <div class="sw-dish"></div>
-        <div class="sw-trench"></div>
         <div class="sw-surface"></div>
+        <div class="sw-panels"></div>
+        <div class="sw-trench"></div>
+        <div class="sw-equator"></div>
+        <div class="sw-dish"></div>
         <div class="sw-laser-core"></div>
+        <div class="sw-shade"></div>
       </div>
-      <div class="sw-beam"></div>
       <div class="sw-beam-glow"></div>
+      <div class="sw-beam-bloom"></div>
+      <div class="sw-beam"></div>
+      <div class="sw-beam-core"></div>
       <div class="sw-flare f1"></div>
       <div class="sw-flare f2"></div>
       <div class="sw-flare f3"></div>
       <div class="sw-flare f4"></div>
+      <div class="sw-flare f5"></div>
+      <div class="sw-dust"></div>
       <div class="sw-label">DEATH STAR</div>
     </div>
     <div class="mario-scene">
@@ -138,6 +150,21 @@
       <label class="settings-check">
         <input type="checkbox" id="setting-mute" />
         <span>Mute all audio</span>
+      </label>
+      <hr class="settings-divider" />
+      <h3 class="settings-sub">Study AI</h3>
+      <p class="settings-hint">Optional: add a free <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> or OpenAI key for full ChatGPT-style answers. Without a key, the tutor still helps using study tools.</p>
+      <label class="settings-row settings-row-stack">
+        <span>AI API key</span>
+        <input type="password" id="setting-ai-key" placeholder="sk-… or OpenRouter key" autocomplete="off" />
+      </label>
+      <label class="settings-row settings-row-stack">
+        <span>API base URL</span>
+        <input type="url" id="setting-ai-base" placeholder="https://openrouter.ai/api/v1" />
+      </label>
+      <label class="settings-row settings-row-stack">
+        <span>Model</span>
+        <input type="text" id="setting-ai-model" placeholder="openai/gpt-oss-20b:free" />
       </label>
     </div>
   </div>
@@ -269,6 +296,29 @@
       </div>
 
       <p class="timer-hint" id="timer-hint">Finish a focus session for +25 XP.</p>
+    </section>
+
+    <section class="panel ai-panel" aria-labelledby="ai-heading">
+      <div class="panel-head">
+        <h2 id="ai-heading">Study AI</h2>
+        <span class="panel-chip" id="ai-status">Tutor</span>
+      </div>
+      <p class="ai-intro">Ask homework questions, get explanations, and work through problems — like a study ChatGPT.</p>
+      <div class="ai-suggestions" id="ai-suggestions">
+        <button type="button" class="ai-chip" data-prompt="Explain photosynthesis like I'm in 8th grade">Explain photosynthesis</button>
+        <button type="button" class="ai-chip" data-prompt="Help me solve: 3x + 7 = 22">Solve 3x + 7 = 22</button>
+        <button type="button" class="ai-chip" data-prompt="What's the difference between mitosis and meiosis?">Mitosis vs meiosis</button>
+        <button type="button" class="ai-chip" data-prompt="Give me a study plan for a history test tomorrow">Study plan</button>
+      </div>
+      <div class="ai-chat" id="ai-chat" aria-live="polite"></div>
+      <form class="ai-form" id="ai-form">
+        <label class="sr-only" for="ai-input">Ask Study AI</label>
+        <textarea id="ai-input" rows="2" maxlength="2000" placeholder="Ask anything about your homework…" required></textarea>
+        <div class="ai-form-actions">
+          <button type="button" class="btn btn-ghost" id="ai-clear">Clear</button>
+          <button type="submit" class="btn btn-primary" id="ai-send">Ask</button>
+        </div>
+      </form>
     </section>
 
     <section class="panel shop-panel" aria-labelledby="shop-heading">

@@ -30,7 +30,7 @@
       name: "Death Star",
       rarity: "rare",
       cost: RARITY_COST.rare,
-      desc: "Cinematic Death Star firing its green superlaser into the cosmos.",
+      desc: "Epic Death Star superlaser — dense stars, flares, and cinematic green beam.",
     },
     {
       id: "blackhole",
@@ -342,6 +342,16 @@
     settingMusic: document.getElementById("setting-music"),
     settingMusicVal: document.getElementById("setting-music-val"),
     settingMute: document.getElementById("setting-mute"),
+    settingAiKey: document.getElementById("setting-ai-key"),
+    settingAiBase: document.getElementById("setting-ai-base"),
+    settingAiModel: document.getElementById("setting-ai-model"),
+    aiChat: document.getElementById("ai-chat"),
+    aiForm: document.getElementById("ai-form"),
+    aiInput: document.getElementById("ai-input"),
+    aiSend: document.getElementById("ai-send"),
+    aiClear: document.getElementById("ai-clear"),
+    aiStatus: document.getElementById("ai-status"),
+    aiSuggestions: document.getElementById("ai-suggestions"),
   };
 
   function todayKey() {
@@ -403,6 +413,15 @@
       soundVolume: clampNum(loaded?.settings?.soundVolume, 0, 100, 80),
       musicVolume: clampNum(loaded?.settings?.musicVolume, 0, 100, 70),
       muted: Boolean(loaded?.settings?.muted),
+      aiKey: typeof loaded?.settings?.aiKey === "string" ? loaded.settings.aiKey : "",
+      aiBase:
+        typeof loaded?.settings?.aiBase === "string" && loaded.settings.aiBase
+          ? loaded.settings.aiBase
+          : "https://openrouter.ai/api/v1",
+      aiModel:
+        typeof loaded?.settings?.aiModel === "string" && loaded.settings.aiModel
+          ? loaded.settings.aiModel
+          : "openai/gpt-oss-20b:free",
     },
   };
 
@@ -491,6 +510,15 @@
       els.settingMusicVal.textContent = `${s.musicVolume}%`;
     }
     if (els.settingMute) els.settingMute.checked = s.muted;
+    if (els.settingAiKey) els.settingAiKey.value = s.aiKey || "";
+    if (els.settingAiBase) els.settingAiBase.value = s.aiBase || "https://openrouter.ai/api/v1";
+    if (els.settingAiModel) els.settingAiModel.value = s.aiModel || "openai/gpt-oss-20b:free";
+    updateAiStatus();
+  }
+
+  function updateAiStatus() {
+    if (!els.aiStatus) return;
+    els.aiStatus.textContent = state.settings.aiKey ? "LLM" : "Tutor";
   }
 
   function openSettingsModal() {
@@ -748,7 +776,12 @@
       soundVolume: 80,
       musicVolume: 70,
       muted: false,
+      aiKey: "",
+      aiBase: "https://openrouter.ai/api/v1",
+      aiModel: "openai/gpt-oss-20b:free",
     };
+    aiHistory.length = 0;
+    renderAiChat();
     applyBrightnessSetting();
     applyAudioSettings();
     syncSettingsUI();
@@ -4060,6 +4093,250 @@
     };
   }
 
+  /* ---------- Study AI ---------- */
+  const AI_SYSTEM = `You are Study AI, a friendly expert homework tutor inside a study app called "study with games".
+Help with school and college homework: math, science, history, writing, languages, and study skills.
+Explain clearly with steps. When solving problems, show the reasoning. Ask a short follow-up if useful.
+Be accurate, encouraging, and concise unless the student asks for depth.
+Refuse harmful or cheating-on-exams requests that ask you to take a test for them; instead teach how to learn the material.`;
+
+  const aiHistory = [];
+
+  function buildStarfield(el, count, sizeMin, sizeMax, colorChance) {
+    if (!el) return;
+    const parts = [];
+    for (let i = 0; i < count; i++) {
+      const x = Math.floor(Math.random() * 1600);
+      const y = Math.floor(Math.random() * 1000);
+      const s = (sizeMin + Math.random() * (sizeMax - sizeMin)).toFixed(1);
+      const tint = Math.random() < colorChance
+        ? (Math.random() < 0.5 ? "rgba(200,255,230,0.95)" : "rgba(210,230,255,0.95)")
+        : "rgba(255,255,255,0.95)";
+      parts.push(`${x}px ${y}px 0 ${s}px ${tint}`);
+    }
+    el.style.boxShadow = parts.join(",");
+  }
+
+  function initStarfields() {
+    buildStarfield(document.getElementById("sw-starfield-far"), 220, 0, 0.4, 0.25);
+    buildStarfield(document.getElementById("sw-starfield-mid"), 140, 0.2, 0.7, 0.35);
+    buildStarfield(document.getElementById("sw-starfield-near"), 70, 0.5, 1.2, 0.4);
+  }
+
+  function renderAiChat() {
+    if (!els.aiChat) return;
+    if (!aiHistory.length) {
+      els.aiChat.innerHTML = `<div class="ai-msg assistant">Hi — I'm Study AI. Ask me about homework, explanations, practice problems, or study plans. Tip: add a free OpenRouter key in Settings for full ChatGPT-style answers.</div>`;
+      return;
+    }
+    els.aiChat.innerHTML = aiHistory
+      .map(
+        (m) =>
+          `<div class="ai-msg ${m.role === "user" ? "user" : "assistant"}">${formatAiHtml(m.content)}</div>`
+      )
+      .join("");
+    els.aiChat.scrollTop = els.aiChat.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatAiHtml(str) {
+    return escapeHtml(str)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+
+  function setAiBusy(busy) {
+    if (els.aiSend) els.aiSend.disabled = busy;
+    if (els.aiInput) els.aiInput.disabled = busy;
+  }
+
+  async function askStudyAi(question) {
+    const q = question.trim();
+    if (!q) return;
+    aiHistory.push({ role: "user", content: q });
+    renderAiChat();
+    const typing = document.createElement("div");
+    typing.className = "ai-msg assistant typing";
+    typing.textContent = "Thinking…";
+    els.aiChat.appendChild(typing);
+    els.aiChat.scrollTop = els.aiChat.scrollHeight;
+    setAiBusy(true);
+
+    try {
+      let answer;
+      if (state.settings.aiKey) {
+        answer = await askLlm(q);
+      } else {
+        answer = await askFallbackTutor(q);
+      }
+      aiHistory.push({ role: "assistant", content: answer });
+    } catch (err) {
+      const msg = err?.message || "Something went wrong.";
+      aiHistory.push({
+        role: "assistant",
+        content: `I hit a snag: ${msg}\n\nYou can retry, or add/check your AI API key in Settings. Meanwhile I can still help with simpler questions.`,
+      });
+    } finally {
+      setAiBusy(false);
+      renderAiChat();
+    }
+  }
+
+  async function askLlm(question) {
+    const base = (state.settings.aiBase || "https://openrouter.ai/api/v1").replace(/\/$/, "");
+    const model = state.settings.aiModel || "openai/gpt-oss-20b:free";
+    const messages = [
+      { role: "system", content: AI_SYSTEM },
+      ...aiHistory.filter((m) => m.role === "user" || m.role === "assistant").slice(-12),
+    ];
+    // current question already in history
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.settings.aiKey}`,
+        "HTTP-Referer": location.origin || "https://study-with-games.local",
+        "X-Title": "study with games",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.5,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API ${res.status}: ${text.slice(0, 180)}`);
+    }
+    const data = await res.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Empty response from model");
+    return String(content).trim();
+  }
+
+  function trySolveMath(q) {
+    const linear = q.match(/(-?\d+(?:\.\d+)?)\s*x\s*([+-])\s*(-?\d+(?:\.\d+)?)\s*=\s*(-?\d+(?:\.\d+)?)/i);
+    if (linear) {
+      const a = Number(linear[1]);
+      const sign = linear[2] === "-" ? -1 : 1;
+      const b = sign * Number(linear[3]);
+      const c = Number(linear[4]);
+      if (a !== 0) {
+        const x = (c - b) / a;
+        return (
+          `Let's solve ${a}x ${b >= 0 ? "+" : "-"} ${Math.abs(b)} = ${c} step by step.\n\n` +
+          `1) Move the constant: ${a}x = ${c} ${b >= 0 ? "-" : "+"} ${Math.abs(b)} = ${c - b}\n` +
+          `2) Divide both sides by ${a}: x = ${(c - b)} / ${a}\n` +
+          `3) Answer: x = ${Number.isInteger(x) ? x : Number(x.toFixed(4))}\n\n` +
+          `Check: ${a}(${Number.isInteger(x) ? x : Number(x.toFixed(4))}) ${b >= 0 ? "+" : "-"} ${Math.abs(b)} = ${c}.`
+        );
+      }
+    }
+
+    const exprMatch = q.match(/(?:what(?:'| i)?s|calculate|compute|evaluate|solve)?\s*([0-9+\-*/().%\s^]+)\??$/i);
+    if (exprMatch) {
+      let expr = exprMatch[1].replace(/\^/g, "**").replace(/[^0-9+\-*/().%\s*]/g, "");
+      expr = expr.replace(/%/g, "/100");
+      if (/^[0-9+\-*/().\s*]+$/.test(expr) && /\d/.test(expr)) {
+        try {
+          // eslint-disable-next-line no-new-func
+          const val = Function(`"use strict"; return (${expr});`)();
+          if (typeof val === "number" && Number.isFinite(val)) {
+            return `Working it out:\n\nExpression: ${exprMatch[1].trim()}\nResult: ${val}`;
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
+  async function wikiSearch(query) {
+    const searchUrl =
+      "https://en.wikipedia.org/w/api.php?action=opensearch&limit=3&namespace=0&format=json&origin=*&search=" +
+      encodeURIComponent(query);
+    const searchRes = await fetch(searchUrl);
+    if (!searchRes.ok) return null;
+    const search = await searchRes.json();
+    const title = search?.[1]?.[0];
+    if (!title) return null;
+    const sumRes = await fetch(
+      "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title)
+    );
+    if (!sumRes.ok) return null;
+    const sum = await sumRes.json();
+    return {
+      title: sum.title || title,
+      extract: sum.extract || "",
+      url: sum.content_urls?.desktop?.page || "",
+    };
+  }
+
+  async function askFallbackTutor(question) {
+    const math = trySolveMath(question);
+    if (math) return math;
+
+    const cleaned = question
+      .replace(/^(what is|what's|whats|who is|who's|explain|define|tell me about|help me with)\s+/i, "")
+      .replace(/\?+$/, "")
+      .trim();
+
+    try {
+      const wiki = await wikiSearch(cleaned || question);
+      if (wiki?.extract) {
+        return (
+          `Here's a clear explanation of **${wiki.title}**:\n\n` +
+          `${wiki.extract}\n\n` +
+          `Study tip: try rewriting this in your own words, then quiz yourself with one example.\n` +
+          (wiki.url ? `\nSource: ${wiki.url}` : "") +
+          `\n\nWant a simpler version, examples, or practice questions? Just ask.\n` +
+          `(For ChatGPT-level conversation on any topic, add a free OpenRouter API key in Settings.)`
+        );
+      }
+    } catch (_) {}
+
+    return (
+      `I can help with that.\n\n` +
+      `Try asking in one of these ways:\n` +
+      `• "Explain [topic] simply"\n` +
+      `• "Solve: 3x + 7 = 22"\n` +
+      `• "Difference between A and B"\n` +
+      `• "Make a study plan for [subject]"\n\n` +
+      `For full ChatGPT-style answers on anything, open Settings → Study AI and paste a free OpenRouter key (openrouter.ai/keys), then keep the free model.`
+    );
+  }
+
+  els.aiForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = els.aiInput.value;
+    els.aiInput.value = "";
+    askStudyAi(q);
+  });
+
+  els.aiClear?.addEventListener("click", () => {
+    aiHistory.length = 0;
+    renderAiChat();
+  });
+
+  els.aiSuggestions?.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-prompt]");
+    if (!chip) return;
+    askStudyAi(chip.dataset.prompt);
+  });
+
+  els.aiInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      els.aiForm.requestSubmit();
+    }
+  });
+
   els.questTabs.forEach((btn) => {
     btn.addEventListener("click", () => setQuestTab(btn.dataset.tab));
   });
@@ -4094,10 +4371,22 @@
     applyAudioSettings();
     saveState();
   });
+  const persistAiSettings = () => {
+    state.settings.aiKey = (els.settingAiKey?.value || "").trim();
+    state.settings.aiBase = (els.settingAiBase?.value || "https://openrouter.ai/api/v1").trim();
+    state.settings.aiModel = (els.settingAiModel?.value || "openai/gpt-oss-20b:free").trim();
+    updateAiStatus();
+    saveState();
+  };
+  els.settingAiKey?.addEventListener("change", persistAiSettings);
+  els.settingAiBase?.addEventListener("change", persistAiSettings);
+  els.settingAiModel?.addEventListener("change", persistAiSettings);
 
   // Drop legacy save so prior progress/time starts fresh
   localStorage.removeItem("study-with-games-v1");
 
+  initStarfields();
+  renderAiChat();
   renderXp();
   renderQuests();
   renderTimer();
