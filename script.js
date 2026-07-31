@@ -4096,19 +4096,107 @@
   }
 
   /* ---------- AI Mode (human chat + research + math) ---------- */
-  const AI_SYSTEM = `You are a sharp study buddy inside "study with games".
-Your job: understand the user's question, use the INTERNET RESULTS, and give a solid direct answer.
+  const AI_SYSTEM = `You are a sharp multilingual study buddy inside "study with games".
+Your job: understand the user's question in ANY language, use the INTERNET RESULTS, and give a solid direct answer.
+ALWAYS reply in the same language the user used (unless they ask for another language).
 Structure:
 1) One clear short answer in the first 1-2 sentences (actually answer what they asked).
-2) A fuller explanation in plain English (why/how as needed).
+2) A fuller explanation (why/how as needed).
 3) Optional extra useful facts.
 4) Source links as markdown.
 Talk naturally. Don't dodge the question. Don't just paste random page blurbs.
 If results are weak, say what you found and what's still unclear.
-For math: show steps. End with 2-3 natural follow-up questions.
+For math: show steps. End with 2-3 natural follow-up questions in the user's language.
 Be accurate. Don't take invigilated exams for them — teach instead.`;
 
   let aiUserName = "";
+  let aiLastLang = { code: "en", name: "English", wiki: "en" };
+
+  /** Lightweight language detection (no heavy libs) — script + keyword cues */
+  function detectLanguage(text) {
+    const t = String(text || "").trim();
+    if (!t) return { code: "en", name: "English", wiki: "en" };
+
+    const counts = {
+      cjk: (t.match(/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g) || []).length,
+      hangul: (t.match(/[\uac00-\ud7af]/g) || []).length,
+      arabic: (t.match(/[\u0600-\u06ff\u0750-\u077f]/g) || []).length,
+      hebrew: (t.match(/[\u0590-\u05ff]/g) || []).length,
+      cyrillic: (t.match(/[\u0400-\u04ff]/g) || []).length,
+      greek: (t.match(/[\u0370-\u03ff]/g) || []).length,
+      thai: (t.match(/[\u0e00-\u0e7f]/g) || []).length,
+      devanagari: (t.match(/[\u0900-\u097f]/g) || []).length,
+      bengali: (t.match(/[\u0980-\u09ff]/g) || []).length,
+      tamil: (t.match(/[\u0b80-\u0bff]/g) || []).length,
+      latin: (t.match(/[A-Za-zÀ-ÿ]/g) || []).length,
+    };
+    const letters = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+
+    if (counts.hangul / letters > 0.2) return { code: "ko", name: "Korean", wiki: "ko" };
+    if (counts.cjk / letters > 0.2) {
+      // Prefer Japanese if kana present, else Chinese
+      if (/[\u3040-\u30ff]/.test(t)) return { code: "ja", name: "Japanese", wiki: "ja" };
+      return { code: "zh", name: "Chinese", wiki: "zh" };
+    }
+    if (counts.arabic / letters > 0.2) return { code: "ar", name: "Arabic", wiki: "ar" };
+    if (counts.hebrew / letters > 0.2) return { code: "he", name: "Hebrew", wiki: "he" };
+    if (counts.thai / letters > 0.2) return { code: "th", name: "Thai", wiki: "th" };
+    if (counts.devanagari / letters > 0.2) return { code: "hi", name: "Hindi", wiki: "hi" };
+    if (counts.bengali / letters > 0.2) return { code: "bn", name: "Bengali", wiki: "bn" };
+    if (counts.tamil / letters > 0.2) return { code: "ta", name: "Tamil", wiki: "ta" };
+    if (counts.greek / letters > 0.2) return { code: "el", name: "Greek", wiki: "el" };
+    if (counts.cyrillic / letters > 0.2) {
+      const low = t.toLowerCase();
+      if (/\b(і|ї|є|що|як|це)\b/i.test(low)) return { code: "uk", name: "Ukrainian", wiki: "uk" };
+      if (/\b(що|какво|това)\b/i.test(low)) return { code: "bg", name: "Bulgarian", wiki: "bg" };
+      return { code: "ru", name: "Russian", wiki: "ru" };
+    }
+
+    const low = t.toLowerCase();
+    const tests = [
+      // More specific Romance / Germanic cues first (avoid bare "que/was/is" false positives)
+      { code: "pt", name: "Portuguese", wiki: "pt", re: /\b(o que|o quê|você|voce|obrigado|obrigada|não|nao|por que|porque|onde|olá|ola|explique|gravidade)\b/ },
+      { code: "es", name: "Spanish", wiki: "es", re: /\b(qué|quién|quien|cómo|como|por qué|porque|dónde|donde|hola|gracias|explique|qué es|que es|el cielo|la tierra)\b/ },
+      { code: "fr", name: "French", wiki: "fr", re: /\b(quoi|qui|comment|pourquoi|où|bonjour|salut|merci|qu'est-ce|est-ce|explique|c'est|le ciel)\b/ },
+      { code: "de", name: "German", wiki: "de", re: /\b(was ist|wer ist|warum|wieso|woher|wohin|hallo|danke|erklär|erklaer|nicht|für mich|wie funktioniert|der himmel)\b/ },
+      { code: "it", name: "Italian", wiki: "it", re: /\b(che cos|chi è|come si|perché|perche|dove|ciao|grazie|spiega|cos'è|cosè|il cielo)\b/ },
+      { code: "nl", name: "Dutch", wiki: "nl", re: /\b(wat is|wie is|hoe|waarom|waar is|hallo|dankjewel|dank je|uitleg|alsjeblieft)\b/ },
+      { code: "pl", name: "Polish", wiki: "pl", re: /\b(co to|kto|jak|dlaczego|gdzie|cześć|czesc|dziękuję|dziekuje|wyjaśnij)\b/ },
+      { code: "tr", name: "Turkish", wiki: "tr", re: /\b(nedir|kim|nasıl|nasil|neden|nerede|merhaba|teşekkür|tesekkur)\b/ },
+      { code: "vi", name: "Vietnamese", wiki: "vi", re: /\b(là gì|như thế nào|tại sao|tai sao|ở đâu|xin chào|cảm ơn|cảm ơn)\b/ },
+      { code: "id", name: "Indonesian", wiki: "id", re: /\b(apa itu|siapa|bagaimana|mengapa|dimana|terima kasih)\b/ },
+      { code: "sv", name: "Swedish", wiki: "sv", re: /\b(vad är|vem|hur|varför|varfor|hej|tack|förklara)\b/ },
+      { code: "ro", name: "Romanian", wiki: "ro", re: /\b(ce este|cine|cum|de ce|unde|salut|mulțumesc|multumesc|explica)\b/ },
+      { code: "cs", name: "Czech", wiki: "cs", re: /\b(co je|kdo|jak|proč|proc|kde|ahoj|děkuji|dekuji|vysvětli)\b/ },
+      { code: "hu", name: "Hungarian", wiki: "hu", re: /\b(mi az|ki az|hogyan|miért|miert|hol van|szia|köszönöm|koszonom)\b/ },
+      { code: "fi", name: "Finnish", wiki: "fi", re: /\b(mikä on|mika on|kuka|miten|miksi|missä|missa|hei|kiitos)\b/ },
+      { code: "en", name: "English", wiki: "en", re: /\b(what|who|why|how|where|when|please|explain|the|is|are)\b/ },
+    ];
+    for (const row of tests) {
+      if (row.re.test(low)) return { code: row.code, name: row.name, wiki: row.wiki };
+    }
+    // Accent hints (Portuguese ã/õ before Spanish/French overlap)
+    if (/[ãõ]/i.test(t)) return { code: "pt", name: "Portuguese", wiki: "pt" };
+    if (/[ñ¿¡]/i.test(t)) return { code: "es", name: "Spanish", wiki: "es" };
+    if (/[àâçéèêëîïôùûüœ]/i.test(t) && /[àâçêëîïôùûüœ]/i.test(t)) return { code: "fr", name: "French", wiki: "fr" };
+    if (/[áéíóúü]/i.test(t) && /\b(el|la|los|las|qué|por)\b/i.test(low)) return { code: "es", name: "Spanish", wiki: "es" };
+    if (/[äöüß]/i.test(t)) return { code: "de", name: "German", wiki: "de" };
+    if (/[áéíóúç]/i.test(t) && /\b(o|a|os|as|não|nao|uma)\b/i.test(low)) return { code: "pt", name: "Portuguese", wiki: "pt" };
+
+    return { code: "en", name: "English", wiki: "en" };
+  }
+
+  const INTENT_PATTERNS = {
+    who: /\b(who|who's|who is|who was|quién|quien|qui|quem|wer|chi|kto|kim|siapa|ai|кто|кто такой|誰|谁|누가)\b/i,
+    when: /\b(when|what year|cuándo|cuando|quand|quando|wann|kiedy|언제|いつ|什么时候|когда)\b/i,
+    where: /\b(where|dónde|donde|où|onde|wo|dove|gdzie|nerede|어디|どこ|哪里|где)\b/i,
+    why: /\b(why|how come|por qué|porque|pourquoi|por que|warum|perché|perche|dlaczego|neden|왜|なぜ|为什么|почему|tại sao|tai sao|mengapa)\b/i,
+    how: /\b(how|cómo|como|comment|wie|come|jak|nasıl|nasil|어떻게|どう|如何|как|bagaimana|như thế nào)\b/i,
+    compare: /\b(vs\.?|versus|difference between|compare|diferencia|différence|unterschied|różnica|차이|違い|区别|разница)\b/i,
+    define: /\b(what is|what's|whats|qué es|que es|qu'est-ce|o que é|was ist|che cos|co to|nedir|무엇|とは|什么是|что такое|apa itu|là gì)\b/i,
+    causes: /\b(cause|causes|causas|causes de|ursachen|przyczyny|원인|原因|причины)\b/i,
+    examples: /\b(example|examples|ejemplo|exemple|beispiel|przykład|예시|例|例子|пример)\b/i,
+  };
 
   function buildStarfield(el, count, sizeMin, sizeMax, colorChance) {
     if (!el) return;
@@ -4161,8 +4249,8 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     if (!aiHistory.length) {
       els.aiChat.innerHTML = `<div class="ai-msg assistant">Hey${
         aiUserName ? ` ${escapeHtml(aiUserName)}` : ""
-      } — ask me anything. I run <strong>PulseSearch</strong>: a light algorithm that scans online databases fast, then digs deeper only if it needs more data for a precise answer.<br><br>Try: “Who invented the telephone?” or “why is the sky blue?”${
-        state.settings.aiKey ? "" : "<br><br><span style=\"opacity:.75\">Optional: add a free OpenRouter key in Settings for even richer wording.</span>"
+      } — ask me in <strong>any language</strong>. I run <strong>PulseSearch</strong>: it detects your language, scans Wikipedia/web in that language (plus English backup), then digs deeper only if it needs more precision.<br><br>Try: “¿Por qué el cielo es azul?”, “Pourquoi le ciel est bleu ?”, or “Why is the sky blue?”${
+        state.settings.aiKey ? "" : "<br><br><span style=\"opacity:.75\">Optional: add a free OpenRouter key in Settings for even richer wording in your language.</span>"
       }</div>`;
       return;
     }
@@ -4201,19 +4289,28 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   }
 
   function rememberNameFrom(text) {
-    const m = text.match(/(?:i(?:'| a)?m|my name is|call me)\s+([A-Za-z][A-Za-z'-]{1,20})/i);
+    const m = text.match(
+      /(?:i(?:'| a)?m|my name is|call me|me llamo|je m'appelle|ich heiße|ich heisse|mi chiamo|meu nome é|меня зовут|저는|私は|我叫)\s+([A-Za-zÀ-ÿА-яЁё\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af][\wÀ-ÿА-яЁё'\-]{1,20})/i
+    );
     if (m && !/^(stuck|lost|confused|good|fine|ok|okay|done|here|trying|stress|tired)/i.test(m[1])) {
       aiUserName = m[1];
     }
   }
 
   function isChitchat(q) {
-    const t = q.trim().toLowerCase().replace(/[!?.]+$/g, "");
+    const t = q.trim().toLowerCase().replace(/[!?.؟¡¿。！？]+$/gu, "");
     if (t.length <= 2) return true;
 
     // If they're asking for info / homework, always search — even if it starts with "hey"
     if (
-      /\b(what is|what's|whats|who is|who's|who invented|where is|when did|when was|why does|why do|why is|how does|how do|how to|explain|define|tell me about|search|look up|google|find out|homework|solve|equation|difference between|vs\.?|versus)\b/i.test(
+      INTENT_PATTERNS.who.test(t) ||
+      INTENT_PATTERNS.when.test(t) ||
+      INTENT_PATTERNS.where.test(t) ||
+      INTENT_PATTERNS.why.test(t) ||
+      INTENT_PATTERNS.how.test(t) ||
+      INTENT_PATTERNS.define.test(t) ||
+      INTENT_PATTERNS.compare.test(t) ||
+      /\b(explain|define|tell me about|search|look up|google|find out|homework|solve|equation|explique|explica|erklär|объясни|説明|解释)\b/i.test(
         t
       )
     ) {
@@ -4221,78 +4318,226 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     }
 
     const chatOnly = [
-      /^(hi|hey|hello|yo|sup|hiya|howdy)$/,
-      /^(hi|hey|hello|yo|sup|hiya|howdy)\s+(there|friend|man|dude|bro)?$/,
-      /^(good )?(morning|afternoon|evening|night)$/,
-      /^(how are you|how's it going|how r u|whats up|what's up|wyd)$/,
-      /^(thanks|thank you|thx|ty|appreciate it|thanks a lot|thank you so much)$/,
-      /^(lol|lmao|haha|hehe|omg|wow|nice|cool|okay|ok|k|alright|bet|fr|true)$/,
-      /^(bye|goodbye|see ya|later|gtg)$/,
-      /^(i'?m )?(tired|stressed|sad|anxious|overwhelmed|bored|hungry)$/,
-      /^(who are you|what are you|what can you do)$/,
-      /^(love you|ily)$/,
+      /^(hi|hey|hello|yo|sup|hiya|howdy|hola|bonjour|salut|ciao|hallo|olá|ola|merhaba|привет|안녕|こんにちは|你好|السلام عليكم|shalom)$/u,
+      /^(hi|hey|hello|yo|sup|hiya|howdy|hola|bonjour|salut)\s+(there|friend|man|dude|bro)?$/,
+      /^(good )?(morning|afternoon|evening|night|días|dias|matin|soir|morgen|abend)$/,
+      /^(how are you|how's it going|how r u|whats up|what's up|wyd|cómo estás|como estas|ça va|ca va|wie geht|как дела|잘 지내|元気|你好吗)$/u,
+      /^(thanks|thank you|thx|ty|appreciate it|thanks a lot|thank you so much|gracias|merci|danke|obrigado|obrigada|grazie|спасибо|ありがとう|谢谢|고마워)$/u,
+      /^(lol|lmao|haha|hehe|omg|wow|nice|cool|okay|ok|k|alright|bet|fr|true|jaja|mdr)$/,
+      /^(bye|goodbye|see ya|later|gtg|adiós|adios|au revoir|tschüss|ciao|пока|再见|안녕)$/u,
+      /^(i'?m )?(tired|stressed|sad|anxious|overwhelmed|bored|hungry|cansado|fatigué|müde|устал)$/u,
+      /^(who are you|what are you|what can you do|quién eres|qui es-tu|wer bist du|кто ты|你是谁)$/u,
+      /^(love you|ily|te quiero|je t'aime)$/u,
     ];
     if (chatOnly.some((re) => re.test(t))) return true;
 
     if (
       t.length < 28 &&
-      /^(hey|hi|yo|ok|okay|yeah|yep|nah|idk|hmm|wow)\b/i.test(t) &&
-      !/\b(is|are|was|were|did|does|can|could|should|would)\b/i.test(t)
+      /^(hey|hi|yo|ok|okay|yeah|yep|nah|idk|hmm|wow|hola|salut|ciao|oui|sí|si)\b/i.test(t) &&
+      !/\b(is|are|was|were|did|does|can|could|should|would|qué|que|cómo|como|pourquoi|warum|почему)\b/i.test(t)
     ) {
       return true;
     }
     return false;
   }
 
+  const CHITCHAT_I18N = {
+    en: {
+      hi: (n) => `Hey${n}! Good to see you. What's going on — homework, a weird question, or you just wanna talk?`,
+      hiF: ["I'm stuck on homework", "Can you help me with math?", "I just need to vent for a sec"],
+      how: (n) => `I'm doing great${n} — ready to help. How are *you* doing? School treating you okay?`,
+      howF: ["I'm stressed about a test", "Yeah I'm good, help me study", "Can you explain something simply?"],
+      thanks: (n) => `Anytime${n}! Seriously. Want to keep going, or take a break?`,
+      thanksF: ["Quiz me on what we just did", "Help with something else", "I'm good for now"],
+      bye: (n) => `Later${n}! You got this. Come back anytime — even if it's just “ugh I don't get this.”`,
+      byeF: ["One more quick question", "Give me a confidence boost"],
+      mood: (n) => `Ugh, that's real${n}. School can pile up fast. Want to talk it out, or should we knock out one tiny homework thing together so it feels lighter?`,
+      moodF: ["Let's do one small problem", "Just talk with me a bit", "Help me make a simple plan"],
+      who: () => `I'm your study buddy in this app — talk to me like a normal person. I can chat, walk through math, explain topics, and look things up in your language.`,
+      whoF: ["Help me with my homework", "Let's just chat", "Solve a math problem with me"],
+      lol: (n) => `Haha fair${n}. What do you wanna dig into next?`,
+      lolF: ["Explain that again simpler", "Give me an example", "New topic"],
+      def: (n) => `Okay${n}, I'm with you. Tell me what's on your mind — school stuff or just whatever.`,
+      defF: ["I'm confused about something", "Help me solve a problem", "Can we talk through my homework?"],
+    },
+    es: {
+      hi: (n) => `¡Hola${n}! ¿Qué tal — tarea, una duda rara, o solo quieres hablar?`,
+      hiF: ["Estoy atascado con la tarea", "¿Me ayudas con mates?", "Solo quiero desahogarme"],
+      how: (n) => `Voy genial${n} — listo para ayudar. ¿Y tú? ¿Cómo va el cole?`,
+      howF: ["Estoy estresado por un examen", "Bien, ayúdame a estudiar", "Explícame algo simple"],
+      thanks: (n) => `¡Cuando quieras${n}! ¿Seguimos o hacemos una pausa?`,
+      thanksF: ["Hazme un mini quiz", "Ayuda con otra cosa", "Por ahora estoy bien"],
+      bye: (n) => `¡Hasta luego${n}! Tú puedes. Vuelve cuando quieras.`,
+      byeF: ["Una pregunta más", "Dame ánimos"],
+      mood: (n) => `Uf, te entiendo${n}. El cole se acumula. ¿Hablamos o resolvemos una cosita pequeña juntos?`,
+      moodF: ["Hagamos un problema corto", "Solo habla conmigo", "Ayúdame a hacer un plan"],
+      who: () => `Soy tu compañero de estudio — háblame normal. Puedo charlar, explicar mates y buscar datos en tu idioma.`,
+      whoF: ["Ayúdame con la tarea", "Solo charlemos", "Resolvamos un problema"],
+      lol: (n) => `Jaja justo${n}. ¿En qué metemos mano ahora?`,
+      lolF: ["Explícalo más simple", "Dame un ejemplo", "Otro tema"],
+      def: (n) => `Vale${n}, estoy contigo. Dime qué tienes en la cabeza.`,
+      defF: ["Estoy confuso", "Ayúdame a resolver algo", "Repasemos la tarea"],
+    },
+    fr: {
+      hi: (n) => `Salut${n}! Quoi de neuf — devoirs, une question bizarre, ou juste envie de parler ?`,
+      hiF: ["Je suis bloqué sur un devoir", "Tu peux m'aider en maths ?", "J'ai juste besoin de parler"],
+      how: (n) => `Ça va super${n} — prêt à aider. Et toi, l'école se passe bien ?`,
+      howF: ["Je stresse pour un contrôle", "Ça va, aide-moi à réviser", "Explique-moi simplement"],
+      thanks: (n) => `Avec plaisir${n}! On continue ou on fait une pause ?`,
+      thanksF: ["Interroge-moi", "Aide sur autre chose", "C'est bon pour l'instant"],
+      bye: (n) => `À plus${n}! Tu gères. Reviens quand tu veux.`,
+      byeF: ["Encore une question", "Donne-moi du courage"],
+      mood: (n) => `Oof, je te crois${n}. L'école s'accumule vite. On en parle, ou on règle un tout petit truc ensemble ?`,
+      moodF: ["Un petit exercice", "Juste discuter", "Aide-moi à planifier"],
+      who: () => `Je suis ton buddy d'étude — parle-moi normalement. Je peux discuter, expliquer les maths et chercher des infos dans ta langue.`,
+      whoF: ["Aide-moi pour les devoirs", "On discute", "Résolvons un problème"],
+      lol: (n) => `Haha ok${n}. On creuse quoi ensuite ?`,
+      lolF: ["Plus simple s'il te plaît", "Donne un exemple", "Nouveau sujet"],
+      def: (n) => `Ok${n}, je suis là. Dis-moi ce que tu as en tête.`,
+      defF: ["Je suis perdu", "Aide-moi à résoudre", "On regarde mes devoirs ?"],
+    },
+    de: {
+      hi: (n) => `Hey${n}! Was geht — Hausaufgaben, eine komische Frage, oder einfach quatschen?`,
+      hiF: ["Ich hänge bei Hausaufgaben", "Hilfst du mir mit Mathe?", "Ich muss kurz Dampf ablassen"],
+      how: (n) => `Mir geht's gut${n} — bereit zu helfen. Und dir? Schule okay?`,
+      howF: ["Ich stress wegen einer Klausur", "Mir geht's gut, lass uns lernen", "Erklär mir was einfach"],
+      thanks: (n) => `Gern${n}! Weitermachen oder Pause?`,
+      thanksF: ["Quiz mich", "Hilfe bei etwas anderem", "Fürs Erste gut"],
+      bye: (n) => `Bis später${n}! Du schaffst das. Komm jederzeit wieder.`,
+      byeF: ["Noch eine kurze Frage", "Mut-Boost bitte"],
+      mood: (n) => `Uff, verständlich${n}. Schule stapelt sich. Reden wir, oder lösen wir zusammen was Kleines?`,
+      moodF: ["Ein kleines Problem", "Nur reden", "Hilf mir beim Plan"],
+      who: () => `Ich bin dein Lernbuddy — sprich normal mit mir. Ich chatte, erkläre Mathe und suche Fakten in deiner Sprache.`,
+      whoF: ["Hilf bei Hausaufgaben", "Lass uns chatten", "Matheaufgabe lösen"],
+      lol: (n) => `Haha fair${n}. Was als Nächstes?`,
+      lolF: ["Einfacher erklären", "Gib ein Beispiel", "Neues Thema"],
+      def: (n) => `Okay${n}, ich bin dabei. Was beschäftigt dich?`,
+      defF: ["Ich bin verwirrt", "Hilf mir etwas zu lösen", "Hausaufgaben durchgehen"],
+    },
+    pt: {
+      hi: (n) => `Oi${n}! E aí — dever de casa, uma dúvida estranha, ou só quer conversar?`,
+      hiF: ["Estou travado na tarefa", "Me ajuda com matemática?", "Só preciso desabafar"],
+      how: (n) => `Estou ótimo${n} — pronto pra ajudar. E você? Escola ok?`,
+      howF: ["Estou estressado com prova", "Tô bem, me ajuda a estudar", "Explica algo simples"],
+      thanks: (n) => `Sempre${n}! Continuamos ou fazemos uma pausa?`,
+      thanksF: ["Me faça um quiz", "Ajuda com outra coisa", "Por agora tá bom"],
+      bye: (n) => `Até logo${n}! Você consegue. Volta quando quiser.`,
+      byeF: ["Mais uma pergunta", "Me anima um pouco"],
+      mood: (n) => `Poxa, eu entendo${n}. A escola acumula rápido. Quer conversar ou resolver uma coisazinha juntos?`,
+      moodF: ["Um problema pequeno", "Só conversar", "Me ajuda a planejar"],
+      who: () => `Sou seu parceiro de estudos — fala normal comigo. Posso conversar, explicar matemática e pesquisar no seu idioma.`,
+      whoF: ["Ajuda na tarefa", "Só conversar", "Resolver um problema"],
+      lol: (n) => `Haha justo${n}. O que a gente mexe agora?`,
+      lolF: ["Explica mais simples", "Me dá um exemplo", "Outro assunto"],
+      def: (n) => `Beleza${n}, tô contigo. Conta o que tá na sua cabeça.`,
+      defF: ["Estou confuso", "Me ajuda a resolver", "Vamos ver a tarefa"],
+    },
+    ru: {
+      hi: (n) => `Привет${n}! Как дела — домашка, странный вопрос или просто поболтать?`,
+      hiF: ["Застрял с домашкой", "Помоги с математикой", "Просто выговориться"],
+      how: (n) => `Отлично${n} — готов помочь. А у тебя школа как?`,
+      howF: ["Стресс из‑за теста", "Норм, давай учиться", "Объясни просто"],
+      thanks: (n) => `Всегда пожалуйста${n}! Продолжаем или перерыв?`,
+      thanksF: ["Проверь меня", "Помоги с другим", "Пока хватит"],
+      bye: (n) => `Пока${n}! Ты справишься. Заходи когда угодно.`,
+      byeF: ["Ещё один вопрос", "Подбодри меня"],
+      mood: (n) => `Эх, понимаю${n}. Школа наваливается. Поговорим или сделаем одну крошечную задачу?`,
+      moodF: ["Маленькая задачка", "Просто поговорить", "Помоги составить план"],
+      who: () => `Я твой учебный напарник — говори как с человеком. Могу болтать, объяснять математику и искать факты на твоём языке.`,
+      whoF: ["Помоги с домашкой", "Просто поболтать", "Решим задачу"],
+      lol: (n) => `Ха, ладно${n}. Что дальше копнём?`,
+      lolF: ["Объясни проще", "Дай пример", "Новая тема"],
+      def: (n) => `Окей${n}, я с тобой. Что у тебя на уме?`,
+      defF: ["Я запутался", "Помоги решить", "Разберём домашку"],
+    },
+    ja: {
+      hi: (n) => `やあ${n}！どうしたの — 宿題、変な質問、それとも雑談？`,
+      hiF: ["宿題で詰まってる", "数学を手伝って", "ちょっと話したい"],
+      how: (n) => `元気だよ${n} — いつでも助けるよ。学校は大丈夫？`,
+      howF: ["テストがストレス", "大丈夫、勉強手伝って", "簡単に説明して"],
+      thanks: (n) => `いつでも${n}！続ける？それとも休憩？`,
+      thanksF: ["クイズして", "別のことを手伝って", "今は大丈夫"],
+      bye: (n) => `またね${n}！大丈夫、いつでも戻ってきて。`,
+      byeF: ["もう一つ質問", "励まして"],
+      mood: (n) => `うん、わかるよ${n}。学校は溜まりやすい。話す？それとも小さな宿題を一緒に？`,
+      moodF: ["小さい問題をやろう", "ちょっと話そう", "計画を立てよう"],
+      who: () => `このアプリの勉強バディだよ。普通に話して。雑談も、数学も、あなたの言語で調べものもできるよ。`,
+      whoF: ["宿題を手伝って", "雑談しよう", "問題を解こう"],
+      lol: (n) => `はは、なるほど${n}。次は何する？`,
+      lolF: ["もっと簡単に", "例をちょうだい", "別の話題"],
+      def: (n) => `オーケー${n}、聞くよ。何が気になってる？`,
+      defF: ["よくわからない", "問題を解いて", "宿題を見よう"],
+    },
+    ko: {
+      hi: (n) => `안녕${n}! 뭐 해 — 숙제, 이상한 질문, 아니면 그냥 얘기?`,
+      hiF: ["숙제에서 막혔어", "수학 도와줄래?", "그냥 좀 말하고 싶어"],
+      how: (n) => `난 좋아${n} — 도와줄 준비됐어. 너는? 학교 괜찮아?`,
+      howF: ["시험 때문에 스트레스", "괜찮아, 공부 도와줘", "쉽게 설명해줘"],
+      thanks: (n) => `언제든${n}! 계속할까, 쉴까?`,
+      thanksF: ["퀴즈 내줘", "다른 거 도와줘", "지금은 괜찮아"],
+      bye: (n) => `나중에 봐${n}! 잘할 수 있어. 언제든 와.`,
+      byeF: ["질문 하나만 더", "응원해 줘"],
+      mood: (n) => `에휴, 진짜지${n}. 학교는 금방 쌓여. 얘기할까, 아니면 작은 숙제 하나 같이 할까?`,
+      moodF: ["작은 문제 하자", "그냥 얘기하자", "계획 세워줘"],
+      who: () => `난 이 앱의 공부 친구야 — 편하게 말해. 수다, 수학, 네 언어로 찾아보기도 가능해.`,
+      whoF: ["숙제 도와줘", "수다만 하자", "문제 풀자"],
+      lol: (n) => `하하 맞지${n}. 다음에 뭘 볼까?`,
+      lolF: ["더 쉽게 설명해", "예시 줘", "새 주제"],
+      def: (n) => `오케이${n}, 듣고 있어. 뭐가 마음에 걸려?`,
+      defF: ["헷갈려", "문제 풀어줘", "숙제 같이 보자"],
+    },
+    zh: {
+      hi: (n) => `嗨${n}！怎么了——作业、奇怪的问题，还是只是想聊聊？`,
+      hiF: ["作业卡住了", "能帮我数学吗？", "只是想吐槽一下"],
+      how: (n) => `我很好${n}——随时帮忙。你呢？学校还好吗？`,
+      howF: ["考试压力好大", "还行，帮我学习", "简单解释一下"],
+      thanks: (n) => `随时${n}！继续还是休息一下？`,
+      thanksF: ["考考我", "帮别的事", "先这样吧"],
+      bye: (n) => `回见${n}！你行的。随时回来。`,
+      byeF: ["再问一个", "给我打打气"],
+      mood: (n) => `唉，懂${n}。学校容易堆起来。想聊聊，还是一起搞定一件小事？`,
+      moodF: ["做个小题目", "随便聊聊", "帮我订个计划"],
+      who: () => `我是这个应用里的学习搭子——正常跟我说话就行。我能聊天、讲数学，也能用你的语言查资料。`,
+      whoF: ["帮我做作业", "随便聊聊", "一起解题"],
+      lol: (n) => `哈哈行${n}。接下来想搞什么？`,
+      lolF: ["再说简单点", "给我个例子", "换个话题"],
+      def: (n) => `好${n}，我在听。你在想什么？`,
+      defF: ["我有点懵", "帮我解题", "一起看看作业"],
+    },
+  };
+
+  function chitchatPack(langCode) {
+    return CHITCHAT_I18N[langCode] || CHITCHAT_I18N.en;
+  }
+
   function chitchatReply(q) {
+    const lang = detectLanguage(q);
+    aiLastLang = lang;
+    const pack = chitchatPack(lang.code);
     const t = q.trim().toLowerCase();
     const name = aiUserName ? ` ${aiUserName}` : "";
-    if (/^(hi|hey|hello|yo|sup|hiya|howdy)\b/.test(t)) {
-      return {
-        content: `Hey${name}! Good to see you. What's going on — homework, a weird question, or you just wanna talk?`,
-        followups: ["I'm stuck on homework", "Can you help me with math?", "I just need to vent for a sec"],
-      };
+    if (/^(hi|hey|hello|yo|sup|hiya|howdy|hola|bonjour|salut|ciao|hallo|olá|ola|merhaba|привет|안녕|こんにちは|你好|السلام)/u.test(t)) {
+      return { content: pack.hi(name), followups: pack.hiF };
     }
-    if (/how are you|how's it going|how r u|what's up|whats up/.test(t)) {
-      return {
-        content: `I'm doing great${name} — ready to help. How are *you* doing? School treating you okay?`,
-        followups: ["I'm stressed about a test", "Yeah I'm good, help me study", "Can you explain something simply?"],
-      };
+    if (/how are you|how's it going|how r u|what's up|whats up|cómo estás|como estas|ça va|ca va|wie geht|как дела|잘 지내|元気|你好吗/u.test(t)) {
+      return { content: pack.how(name), followups: pack.howF };
     }
-    if (/thanks|thank you|thx|ty|appreciate/.test(t)) {
-      return {
-        content: `Anytime${name}! Seriously. Want to keep going, or take a break?`,
-        followups: ["Quiz me on what we just did", "Help with something else", "I'm good for now"],
-      };
+    if (/thanks|thank you|thx|ty|appreciate|gracias|merci|danke|obrigad|grazie|спасибо|ありがとう|谢谢|고마워/u.test(t)) {
+      return { content: pack.thanks(name), followups: pack.thanksF };
     }
-    if (/bye|goodbye|see ya|later|gtg/.test(t)) {
-      return {
-        content: `Later${name}! You got this. Come back anytime — even if it's just “ugh I don't get this.”`,
-        followups: ["One more quick question", "Give me a confidence boost"],
-      };
+    if (/bye|goodbye|see ya|later|gtg|adiós|adios|au revoir|tschüss|ciao|пока|再见|안녕/u.test(t)) {
+      return { content: pack.bye(name), followups: pack.byeF };
     }
-    if (/tired|stressed|sad|anxious|overwhelmed|bored/.test(t)) {
-      return {
-        content: `Ugh, that's real${name}. School can pile up fast. Want to talk it out, or should we knock out one tiny homework thing together so it feels lighter?`,
-        followups: ["Let's do one small problem", "Just talk with me a bit", "Help me make a simple plan"],
-      };
+    if (/tired|stressed|sad|anxious|overwhelmed|bored|cansado|fatigué|müde|устал|累|피곤/u.test(t)) {
+      return { content: pack.mood(name), followups: pack.moodF };
     }
-    if (/who are you|what are you|what can you do/.test(t)) {
-      return {
-        content: `I'm your study buddy in this app — talk to me like a normal person. I can chat, walk through math, explain topics in plain English, and look things up when we need facts.`,
-        followups: ["Help me with my homework", "Let's just chat", "Solve a math problem with me"],
-      };
+    if (/who are you|what are you|what can you do|quién eres|qui es-tu|wer bist du|кто ты|你是谁|너는 누구/u.test(t)) {
+      return { content: pack.who(name), followups: pack.whoF };
     }
-    if (/lol|lmao|haha|hehe|omg|wow|nice|cool|bet|fr|true/.test(t)) {
-      return {
-        content: `Haha fair${name}. What do you wanna dig into next?`,
-        followups: ["Explain that again simpler", "Give me an example", "New topic"],
-      };
+    if (/lol|lmao|haha|hehe|omg|wow|nice|cool|bet|fr|true|jaja|mdr/u.test(t)) {
+      return { content: pack.lol(name), followups: pack.lolF };
     }
-    return {
-      content: `Okay${name}, I'm with you. Tell me what's on your mind — school stuff or just whatever.`,
-      followups: ["I'm confused about something", "Help me solve a problem", "Can we talk through my homework?"],
-    };
+    return { content: pack.def(name), followups: pack.defF };
   }
 
   function niceNum(n) {
@@ -4305,33 +4550,36 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   function understandQuestion(question, prior) {
     const raw = question.trim();
     const lower = raw.toLowerCase();
+    const lang = detectLanguage(raw);
+    aiLastLang = lang;
+
     let intent = "explain";
-    if (/^\s*(who|who's|who is|who was|who invented|who discovered)/i.test(raw)) intent = "who";
-    else if (/^\s*(when|what year|what date)/i.test(raw)) intent = "when";
-    else if (/^\s*(where|which country|which city)/i.test(raw)) intent = "where";
-    else if (/\b(why|how come|reason)\b/i.test(raw)) intent = "why";
-    else if (/\b(how (do|does|did|to|can|would)|steps?|process)\b/i.test(raw)) intent = "how";
-    else if (/\b(vs\.?|versus|difference between|compare|compared to)\b/i.test(raw)) intent = "compare";
-    else if (/\b(define|definition|what (is|are|was|were)|what's|whats)\b/i.test(raw)) intent = "define";
-    else if (/\b(cause|causes|led to|resulted)\b/i.test(raw)) intent = "causes";
-    else if (/\b(example|examples)\b/i.test(raw)) intent = "examples";
+    if (INTENT_PATTERNS.who.test(raw) || /^\s*(who invented|who discovered)/i.test(raw)) intent = "who";
+    else if (INTENT_PATTERNS.when.test(raw)) intent = "when";
+    else if (INTENT_PATTERNS.where.test(raw)) intent = "where";
+    else if (INTENT_PATTERNS.why.test(raw)) intent = "why";
+    else if (INTENT_PATTERNS.compare.test(raw)) intent = "compare";
+    else if (INTENT_PATTERNS.define.test(raw)) intent = "define";
+    else if (INTENT_PATTERNS.causes.test(raw)) intent = "causes";
+    else if (INTENT_PATTERNS.examples.test(raw)) intent = "examples";
+    else if (INTENT_PATTERNS.how.test(raw)) intent = "how";
     else if (trySolveMath(raw)) intent = "math";
 
     let topic = raw
-      .replace(/^(hey|hi|yo|please|can you|could you|would you|okay|ok|um+|uh+)\s+/i, "")
-      .replace(/^(explain|define|describe|summarize|tell me about|help me (with|understand)|look up|search for|google|find out)\s+/i, "")
-      .replace(/^(what is|what's|whats|what are|who is|who's|who was|who invented|who discovered|where is|where are|when did|when was|why is|why are|why does|why do|how does|how do|how did|how to|how come)\s+/i, "")
-      .replace(/\b(like i'?m (tired|dumb|5|in \w+ grade)|in plain english|simply|simple|please|for me|step by step)\b/gi, "")
-      .replace(/[?!]+$/g, "")
+      .replace(/^(hey|hi|yo|hola|bonjour|salut|ciao|hallo|olá|ola|merhaba|안녕|こんにちは|你好|привет|السلام|please|can you|could you|would you|okay|ok|um+|uh+|por favor|s'il te plaît|bitte)\s+/i, "")
+      .replace(/^(explain|define|describe|summarize|tell me about|help me (with|understand)|look up|search for|google|find out|explique|explica|erklär|spiega|説明|解释|объясни)\s+/i, "")
+      .replace(/^(what is|what's|whats|what are|quién es|quien es|qué es|que es|qu'est-ce que|o que é|was ist|che cos'|co to jest|nedir|무엇|とは|什么是|что такое|apa itu|là gì|who is|who's|who was|who invented|who discovered|where is|where are|when did|when was|why is|why are|why does|why do|cómo|como|comment|how does|how do|how did|how to|how come|por qué|porque|pourquoi|warum|perché|왜|なぜ|为什么|почему)\s+/i, "")
+      .replace(/\b(like i'?m (tired|dumb|5|in \w+ grade)|in plain english|simply|simple|please|for me|step by step|en simple|simplemente|simplement)\b/gi, "")
+      .replace(/[?!؟¡¿]+$/g, "")
       .replace(/\s+/g, " ")
       .trim();
 
-    if (!topic || topic.length < 2) topic = raw.replace(/[?!]+$/g, "").trim();
+    if (!topic || topic.length < 2) topic = raw.replace(/[?!؟]+$/g, "").trim();
 
-    // Follow-ups like "why?" / "tell me more" reuse prior topic
+    // Short follow-ups reuse prior topic (multilingual cues)
     if (
       prior &&
-      (/^(yes|yeah|yep|sure|ok|okay|more|go deeper|why|how|and|also|what about|tell me more|continue|elaborate|wait why|why though)\b/i.test(lower) ||
+      (/^(yes|yeah|yep|sure|ok|okay|oui|sí|si|mais|more|más|plus|mehr|もっと|더|еще|more|go deeper|why|cómo|comment|warum|왜|なぜ|为什么|почему|and|also|what about|tell me more|continue|elaborate|wait why|why though)\b/i.test(lower) ||
         topic.length < 12)
     ) {
       const hint =
@@ -4342,50 +4590,38 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
 
     const queries = new Set();
     queries.add(topic);
-    queries.add(raw.replace(/[?!]+$/g, "").slice(0, 100));
+    queries.add(raw.replace(/[?!؟]+$/g, "").slice(0, 100));
 
+    // Language-aware query boosters (keep original phrasing + light English bridges for recall)
     if (intent === "who") {
-      queries.add(`${topic} inventor`);
-      queries.add(`${topic} biography`);
-      queries.add(`who invented ${topic}`);
+      queries.add(`${topic}`);
+      queries.add(`who ${topic}`);
     } else if (intent === "why") {
-      queries.add(`why ${topic}`);
-      queries.add(`${topic} explanation`);
-      queries.add(`${topic} cause`);
-      // sky blue special-case style helpers via generic science phrasing
-      if (/sky/.test(topic) && /blue/.test(topic)) queries.add("Rayleigh scattering");
+      queries.add(`${topic}`);
+      if (/sky|ciel|cielo|himmel|하늘|空|небо/i.test(topic) && /blue|bleu|azul|blau|파란|青|син/i.test(raw + topic)) {
+        queries.add("Rayleigh scattering");
+      }
     } else if (intent === "how") {
-      queries.add(`how ${topic} works`);
-      queries.add(`${topic} process`);
-      queries.add(`${topic} steps`);
+      queries.add(`${topic}`);
     } else if (intent === "compare") {
       const vs = raw.match(/difference between\s+(.+?)\s+and\s+(.+?)(?:\?|$)/i) ||
+        raw.match(/diferencia entre\s+(.+?)\s+y\s+(.+?)(?:\?|$)/i) ||
+        raw.match(/différence entre\s+(.+?)\s+et\s+(.+?)(?:\?|$)/i) ||
         raw.match(/(.+?)\s+(?:vs\.?|versus|compared to)\s+(.+?)(?:\?|$)/i);
       if (vs) {
         queries.add(vs[1].trim());
-        queries.add(vs[2].replace(/[?!]+$/, "").trim());
-        queries.add(`${vs[1].trim()} vs ${vs[2].replace(/[?!]+$/, "").trim()}`);
+        queries.add(vs[2].replace(/[?!؟]+$/, "").trim());
       }
-    } else if (intent === "causes") {
-      queries.add(`${topic} causes`);
-      queries.add(`causes of ${topic}`);
-    } else if (intent === "when") {
-      queries.add(`${topic} date`);
-      queries.add(`${topic} year`);
-    } else if (intent === "where") {
-      queries.add(`${topic} location`);
-    } else if (intent === "examples") {
-      queries.add(`${topic} examples`);
+    } else if (intent === "define") {
+      queries.add(topic);
     } else {
-      queries.add(`${topic} overview`);
-      queries.add(`what is ${topic}`);
+      queries.add(topic);
     }
-
-    if (/history|war|revolution|empire|civilization/i.test(raw)) queries.add(`${topic} history`);
 
     return {
       intent,
       topic,
+      lang,
       queries: [...queries].filter((t) => t && t.length > 1).slice(0, 5),
     };
   }
@@ -4397,9 +4633,15 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   function scoreHit(hit, question, topic) {
     const qWords = `${question} ${topic}`
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
       .split(/\s+/)
-      .filter((w) => w.length > 2 && !/^(the|and|for|with|that|this|what|who|why|how|when|where|does|did|are|was|can|you|please|about|from|into)$/.test(w));
+      .filter(
+        (w) =>
+          w.length > 1 &&
+          !/^(the|and|for|with|that|this|what|who|why|how|when|where|does|did|are|was|can|you|please|about|from|into|qué|que|como|cómo|por|una|los|las|des|les|une|der|die|das|und|ist|что|как|это|это|の|は|を|が|에|는|이|가|的|是|什么)$/iu.test(
+            w
+          )
+      );
     const hay = `${hit.title || ""} ${hit.extract || hit.text || ""}`.toLowerCase();
     let score = 0;
     qWords.forEach((w) => {
@@ -4408,6 +4650,8 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     });
     // Prefer Wikipedia encyclopedia pages over tangential matches
     if (hit.source === "Wikipedia") score += 1;
+    // Prefer pages from the user's Wikipedia language
+    if (hit.wikiLang && aiLastLang?.wiki && hit.wikiLang === aiLastLang.wiki) score += 2;
     // Penalize very short / empty extracts
     const len = (hit.extract || hit.text || "").length;
     if (len > 120) score += 2;
@@ -4425,10 +4669,17 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       .sort((a, b) => b.score - a.score);
   }
 
-  async function wikiMultiSearch(query) {
+  function wikiLangCode(lang) {
+    if (!lang) return "en";
+    if (typeof lang === "string") return lang || "en";
+    return lang.wiki || lang.code || "en";
+  }
+
+  async function wikiMultiSearch(query, lang = "en") {
+    const code = wikiLangCode(lang);
     try {
       const url =
-        "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&exchars=700&inprop=url&format=json&origin=*&gsrsearch=" +
+        `https://${code}.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&exchars=700&inprop=url&format=json&origin=*&gsrsearch=` +
         encodeURIComponent(query);
       const res = await fetch(url);
       if (!res.ok) return [];
@@ -4441,8 +4692,9 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         .map((p) => ({
           title: p.title,
           extract: p.extract,
-          url: p.fullurl || `https://en.wikipedia.org/wiki/${encodeURIComponent(p.title)}`,
+          url: p.fullurl || `https://${code}.wikipedia.org/wiki/${encodeURIComponent(p.title)}`,
           source: "Wikipedia",
+          wikiLang: code,
           query,
         }));
     } catch {
@@ -4450,18 +4702,20 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     }
   }
 
-  async function wikiDeepSummary(title) {
+  async function wikiDeepSummary(title, lang = "en") {
+    const code = wikiLangCode(lang);
     try {
       const res = await fetch(
-        "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title.replace(/ /g, "_"))
+        `https://${code}.wikipedia.org/api/rest_v1/page/summary/` + encodeURIComponent(title.replace(/ /g, "_"))
       );
       if (!res.ok) return null;
       const sum = await res.json();
       return {
         title: sum.title || title,
         extract: sum.extract || "",
-        url: sum.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+        url: sum.content_urls?.desktop?.page || `https://${code}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
         source: "Wikipedia",
+        wikiLang: code,
         description: sum.description || "",
       };
     } catch {
@@ -4469,15 +4723,21 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     }
   }
 
-  async function wikiSearch(query) {
-    const pages = await wikiMultiSearch(query);
+  async function wikiSearch(query, lang = "en") {
+    const pages = await wikiMultiSearch(query, lang);
     if (!pages.length) return null;
     return {
       query,
       title: pages[0].title,
       extract: pages[0].extract,
       url: pages[0].url,
-      related: pages.slice(1).map((p) => ({ title: p.title, url: p.url, text: p.extract })),
+      wikiLang: pages[0].wikiLang || wikiLangCode(lang),
+      related: pages.slice(1).map((p) => ({
+        title: p.title,
+        url: p.url,
+        text: p.extract,
+        wikiLang: p.wikiLang,
+      })),
       pages,
     };
   }
@@ -4535,6 +4795,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
             extract: p.extract,
             url: p.url,
             source: "Wikipedia",
+            wikiLang: p.wikiLang || item.wiki.wikiLang,
             topic: item.topic,
           })
         );
@@ -4544,6 +4805,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
           extract: item.wiki.extract,
           url: item.wiki.url,
           source: "Wikipedia",
+          wikiLang: item.wiki.wikiLang,
           topic: item.topic,
         });
       }
@@ -4580,6 +4842,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
           extract: r.text || "",
           url: r.url,
           source: "Wikipedia",
+          wikiLang: r.wikiLang || item.wiki.wikiLang,
           topic: item.topic,
         })
       );
@@ -4587,18 +4850,40 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return hits;
   }
 
-  async function researchSubtopics(subtopics) {
+  function mergeWikiBags(primary, secondary) {
+    if (!primary) return secondary || null;
+    if (!secondary?.pages?.length) return primary;
+    const urls = new Set((primary.pages || []).map((p) => p.url));
+    const extra = secondary.pages.filter((p) => p.url && !urls.has(p.url));
+    return {
+      ...primary,
+      pages: [...(primary.pages || []), ...extra],
+      related: [...(primary.related || []), ...(secondary.related || [])].slice(0, 10),
+    };
+  }
+
+  async function researchSubtopics(subtopics, lang = "en") {
+    const code = wikiLangCode(lang);
     const jobs = subtopics.map(async (topic) => {
-      const [wiki, ddg] = await Promise.all([wikiSearch(topic), ddgSearch(topic)]);
-      return { topic, wiki, ddg };
+      const [wikiPrimary, wikiEn, ddg] = await Promise.all([
+        wikiSearch(topic, code),
+        code !== "en" ? wikiSearch(topic, "en") : Promise.resolve(null),
+        ddgSearch(topic),
+      ]);
+      return { topic, wiki: mergeWikiBags(wikiPrimary, wikiEn), ddg };
     });
     return Promise.all(jobs);
   }
 
-  async function wikidataSearch(query) {
+  async function wikidataSearch(query, lang = "en") {
+    const code = wikiLangCode(lang);
     try {
       const url =
-        "https://www.wikidata.org/w/api.php?action=wbsearchentities&language=en&type=item&limit=4&format=json&origin=*&search=" +
+        "https://www.wikidata.org/w/api.php?action=wbsearchentities&language=" +
+        encodeURIComponent(code) +
+        "&uselang=" +
+        encodeURIComponent(code) +
+        "&type=item&limit=4&format=json&origin=*&search=" +
         encodeURIComponent(query);
       const res = await fetch(url);
       if (!res.ok) return [];
@@ -4610,6 +4895,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
           extract: s.description || s.label,
           url: s.concepturi || `https://www.wikidata.org/wiki/${s.id}`,
           source: "Wikidata",
+          wikiLang: code,
           query,
         }));
     } catch {
@@ -4617,10 +4903,11 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     }
   }
 
-  async function wikiRelatedTitles(title, limit = 6) {
+  async function wikiRelatedTitles(title, limit = 6, lang = "en") {
+    const code = wikiLangCode(lang);
     try {
       const url =
-        "https://en.wikipedia.org/w/api.php?action=query&prop=links&plnamespace=0&pllimit=" +
+        `https://${code}.wikipedia.org/w/api.php?action=query&prop=links&plnamespace=0&pllimit=` +
         limit +
         "&format=json&origin=*&titles=" +
         encodeURIComponent(title);
@@ -4652,6 +4939,8 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
    */
   async function pulseSearch(question, priorContent, onProgress) {
     const understood = understandQuestion(question, priorContent || "");
+    const lang = understood.lang || detectLanguage(question);
+    const wikiCode = wikiLangCode(lang);
     const allQueries = understood.queries;
     const report = (msg) => {
       if (typeof onProgress === "function") onProgress(msg);
@@ -4685,21 +4974,38 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       if (len >= 420) c += 0.1;
       if (list.filter((h) => (h.score || 0) >= 5).length >= 2) c += 0.1;
       if (top.source === "Wikipedia") c += 0.05;
-      // Intent-sensitive boosts
-      if (understood.intent === "who" && /\b(invent|scientist|physicist|author|born|died)\b/i.test(top.extract || "")) c += 0.08;
-      if (understood.intent === "why" && /\b(because|cause|due to|scattering|result)\b/i.test(top.extract || "")) c += 0.08;
+      if (top.wikiLang && top.wikiLang === wikiCode) c += 0.08;
+      // Intent-sensitive boosts (multilingual cues)
+      if (
+        understood.intent === "who" &&
+        /\b(invent|scientist|physicist|author|born|died|inventor|científico|wissenschaftler|учёный|科学者)\b/i.test(
+          top.extract || ""
+        )
+      ) {
+        c += 0.08;
+      }
+      if (
+        understood.intent === "why" &&
+        /\b(because|cause|due to|scattering|result|porque|parce que|weil|потому|때문에|ため)\b/i.test(
+          top.extract || ""
+        )
+      ) {
+        c += 0.08;
+      }
       return Math.max(0, Math.min(1, c));
     };
 
+    const hitWikiLang = (h) => h?.wikiLang || (String(h?.url || "").match(/https?:\/\/([a-z]{2,3})\.wikipedia\.org/i)?.[1]) || wikiCode;
+
     // ----- Phase 1: FAST pulse (cheap) -----
-    report("PulseSearch · fast scan…");
+    report(`PulseSearch · ${lang.name || wikiCode} scan…`);
     const fastQueries = allQueries.slice(0, 2);
     usedQueries.push(...fastQueries);
-    const fastBags = await researchSubtopics(fastQueries);
+    const fastBags = await researchSubtopics(fastQueries, wikiCode);
     absorb(fastBags);
 
     // One cheap Wikidata peek on the topic (tiny payload)
-    const wdFast = await wikidataSearch(understood.topic);
+    const wdFast = await wikidataSearch(understood.topic, wikiCode);
     absorb([], wdFast);
 
     let confidence = confidenceOf(hits);
@@ -4710,9 +5016,10 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       phase = 2;
       report("Need more data — digging deeper…");
       const deepQueries = allQueries.slice(2, 5).filter((q) => !usedQueries.includes(q));
-      // Also try a cleaned "what is / why" phrasing
+      // Keep original-language topic; add light English bridges for recall
       const alt = [
-        `what is ${understood.topic}`,
+        understood.topic,
+        wikiCode !== "en" ? `what is ${understood.topic}` : `what is ${understood.topic}`,
         understood.intent === "why" ? `why ${understood.topic}` : null,
         understood.intent === "who" ? `who ${understood.topic}` : null,
       ].filter(Boolean);
@@ -4722,13 +5029,15 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       const next = [...new Set(deepQueries)].slice(0, 3);
       usedQueries.push(...next);
       if (next.length) {
-        const deepBags = await researchSubtopics(next);
+        const deepBags = await researchSubtopics(next, wikiCode);
         absorb(deepBags);
       }
 
       // Deepen top 2 Wikipedia pages (more precise extracts)
       const topWiki = hits.filter((h) => h.source === "Wikipedia").slice(0, 2);
-      const deepPages = await Promise.all(topWiki.map((h) => wikiDeepSummary(h.title)));
+      const deepPages = await Promise.all(
+        topWiki.map((h) => wikiDeepSummary(h.title, hitWikiLang(h)))
+      );
       absorb(
         [],
         deepPages.filter(Boolean).map((p) => ({ ...p, query: understood.topic }))
@@ -4742,20 +5051,25 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       report("Gathering extra sources for a more precise answer…");
       const seed = hits.find((h) => h.source === "Wikipedia") || hits[0];
       if (seed?.title) {
-        const related = await wikiRelatedTitles(seed.title, 5);
+        const seedLang = hitWikiLang(seed);
+        const related = await wikiRelatedTitles(seed.title, 5, seedLang);
         // Score related titles against the question; only fetch the best 2
         const rankedRelated = related
           .map((title) => ({
             title,
-            score: scoreHit({ title, extract: title, source: "Wikipedia" }, question, understood.topic),
+            score: scoreHit(
+              { title, extract: title, source: "Wikipedia", wikiLang: seedLang },
+              question,
+              understood.topic
+            ),
           }))
           .sort((a, b) => b.score - a.score)
           .slice(0, 2);
 
         const relatedPages = await Promise.all(
           rankedRelated.map(async (r) => {
-            const pages = await wikiMultiSearch(r.title);
-            return pages[0] || (await wikiDeepSummary(r.title));
+            const pages = await wikiMultiSearch(r.title, seedLang);
+            return pages[0] || (await wikiDeepSummary(r.title, seedLang));
           })
         );
         absorb(
@@ -4765,19 +5079,20 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
             extract: p.extract,
             url: p.url,
             source: p.source || "Wikipedia",
+            wikiLang: p.wikiLang || seedLang,
             query: understood.topic,
           }))
         );
 
         // One more Wikidata pass with an alternate query
-        const wdDeep = await wikidataSearch(allQueries[0] || understood.topic);
+        const wdDeep = await wikidataSearch(allQueries[0] || understood.topic, wikiCode);
         absorb([], wdDeep);
       }
       confidence = confidenceOf(hits);
     } else if (hits[0]?.source === "Wikipedia" && (hits[0].extract || "").length < 280) {
       // Small precision boost: deepen best page even on medium confidence
       report("Refining the top source…");
-      const deep = await wikiDeepSummary(hits[0].title);
+      const deep = await wikiDeepSummary(hits[0].title, hitWikiLang(hits[0]));
       if (deep) absorb([], [{ ...deep, query: understood.topic }]);
       confidence = confidenceOf(hits);
     }
@@ -4796,6 +5111,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       confidence,
       phase,
       algorithm: "PulseSearch",
+      lang,
     };
   }
 
@@ -4909,6 +5225,72 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return null;
   }
 
+  const FOLLOWUP_I18N = {
+    en: {
+      math: ["Wait, can you slow down on that one step?", "Give me a similar problem to try", "Why do we do it that way?"],
+      base: (topic) => ["Okay but explain it like I'm tired", `Can you give a real-life example of ${topic}?`, "Quiz me so I know if I get it"],
+      compare: "Can you make a tiny cheat-sheet table?",
+      history: "What happened after that?",
+      stress: "Just encourage me for a sec",
+    },
+    es: {
+      math: ["¿Puedes ir más despacio en ese paso?", "Dame un problema parecido", "¿Por qué se hace así?"],
+      base: (topic) => ["Explícamelo más simple", `¿Un ejemplo de la vida real de ${topic}?`, "Hazme un mini quiz"],
+      compare: "¿Me haces una tablita resumen?",
+      history: "¿Qué pasó después?",
+      stress: "Anímame un momento",
+    },
+    fr: {
+      math: ["Tu peux ralentir sur cette étape ?", "Donne-moi un exercice similaire", "Pourquoi on fait comme ça ?"],
+      base: (topic) => ["Explique plus simplement", `Un exemple concret de ${topic} ?`, "Interroge-moi"],
+      compare: "Tu peux faire un mini tableau ?",
+      history: "Et après, que s'est-il passé ?",
+      stress: "Encourage-moi une seconde",
+    },
+    de: {
+      math: ["Kannst du diesen Schritt langsamer erklären?", "Gib mir eine ähnliche Aufgabe", "Warum machen wir das so?"],
+      base: (topic) => ["Erklär's einfacher", `Ein Alltagsbeispiel zu ${topic}?`, "Quiz mich"],
+      compare: "Machst du eine kleine Übersichtstabelle?",
+      history: "Was passierte danach?",
+      stress: "Mutmach mich kurz",
+    },
+    pt: {
+      math: ["Pode ir mais devagar nesse passo?", "Me dá um problema parecido", "Por que fazemos assim?"],
+      base: (topic) => ["Explica mais simples", `Um exemplo da vida real de ${topic}?`, "Me faça um quiz"],
+      compare: "Faz uma tabelinha resumo?",
+      history: "O que aconteceu depois?",
+      stress: "Me anima um segundo",
+    },
+    ru: {
+      math: ["Можешь помедленнее на этом шаге?", "Дай похожую задачу", "Почему так делают?"],
+      base: (topic) => ["Объясни проще", `Пример из жизни про ${topic}?`, "Проверь меня"],
+      compare: "Сделаешь маленькую таблицу?",
+      history: "А что было дальше?",
+      stress: "Подбодри меня",
+    },
+    ja: {
+      math: ["そのステップをもっとゆっくり", "似た問題を出して", "なぜそのやり方なの？"],
+      base: (topic) => ["もっと簡単に説明して", `${topic}の具体例は？`, "クイズして"],
+      compare: "小さな表にまとめて",
+      history: "そのあとどうなった？",
+      stress: "ちょっと励まして",
+    },
+    ko: {
+      math: ["그 단계 천천히 해줘", "비슷한 문제 줘", "왜 그렇게 해?"],
+      base: (topic) => ["더 쉽게 설명해줘", `${topic} 실생활 예시는?`, "퀴즈 내줘"],
+      compare: "작은 표로 정리해줘",
+      history: "그다음엔 뭐가 됐어?",
+      stress: "잠깐 응원해줘",
+    },
+    zh: {
+      math: ["这一步慢一点讲？", "再给我一道类似的", "为什么要这样？"],
+      base: (topic) => ["讲简单点", `${topic} 的生活例子？`, "考考我"],
+      compare: "做个小对照表？",
+      history: "后来发生了什么？",
+      stress: "给我打打气",
+    },
+  };
+
   function extractFollowups(answer, question, research) {
     const follows = [];
     const lines = String(answer).split("\n");
@@ -4917,20 +5299,17 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       if (m) follows.push(m[1].replace(/^["']|["']$/g, "").trim());
     }
     const qLow = question.toLowerCase();
-    const topic = research?.[0]?.wiki?.title || "this";
+    const pack = FOLLOWUP_I18N[aiLastLang?.code] || FOLLOWUP_I18N.en;
+    const topicLabel = research?.[0]?.wiki?.title || (aiLastLang?.code === "en" ? "this" : "…");
     if (!follows.length) {
-      if (/math|solve|equation|x\s*=/i.test(question) || trySolveMath(question)) {
-        follows.push("Wait, can you slow down on that one step?");
-        follows.push("Give me a similar problem to try");
-        follows.push("Why do we do it that way?");
+      if (/math|solve|equation|x\s*=|résous|resuelve|löse|реши|解け|풀어|解/i.test(question) || trySolveMath(question)) {
+        follows.push(...pack.math);
       } else {
-        follows.push("Okay but explain it like I'm tired");
-        follows.push(`Can you give a real-life example of ${topic}?`);
-        follows.push("Quiz me so I know if I get it");
+        follows.push(...pack.base(topicLabel));
       }
-      if (/compare|vs|difference/i.test(qLow)) follows.push("Can you make a tiny cheat-sheet table?");
-      if (/war|history|cause/i.test(qLow)) follows.push("What happened after that?");
-      if (/stress|tired|hard|confused|lost/i.test(qLow)) follows.push("Just encourage me for a sec");
+      if (INTENT_PATTERNS.compare.test(qLow)) follows.push(pack.compare);
+      if (/war|history|cause|guerra|histoire|geschichte|война|戦争|전쟁|战争/i.test(qLow)) follows.push(pack.history);
+      if (/stress|tired|hard|confused|lost|estres|fatig|müde|устал|疲|힘들|累/i.test(qLow)) follows.push(pack.stress);
     }
     return [...new Set(follows)].slice(0, 4);
   }
@@ -4953,7 +5332,186 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     return parts.slice(0, max).join(" ").trim();
   }
 
-  function craftDirectAnswer(intent, topic, bestHit) {
+  const ANSWER_I18N = {
+    en: {
+      short: "Short answer",
+      more: "More detail",
+      sourceTopic: "Source topic",
+      how: "How it works",
+      causes: "Main causes",
+      diff: "Here's the difference",
+      answer: "Answer",
+      lead: (n, topic, intent) =>
+        `Okay${n} — I understood your question as asking about **${topic}** (${intent}). I searched the internet and here's a solid answer:\n\n`,
+      noMatch: (topic, n) =>
+        `I searched the web for **${topic}**${n}, but didn't get a strong match. Try rephrasing with the main topic words.\n`,
+      related: "Related context from the web",
+      also: "Also useful",
+      planTitle: "Quick study plan",
+      plan: "20 min read + write 5 facts from memory, 15 min explain out loud, 15 min practice, 10 min review mistakes.",
+      sources: "Sources I used",
+      fuzzy: `\nIf any part is still fuzzy, ask me like: “explain that simpler” or “give an example.”\n`,
+    },
+    es: {
+      short: "Respuesta corta",
+      more: "Más detalle",
+      sourceTopic: "Tema fuente",
+      how: "Cómo funciona",
+      causes: "Causas principales",
+      diff: "Aquí está la diferencia",
+      answer: "Respuesta",
+      lead: (n, topic, intent) =>
+        `Vale${n} — entendí que preguntas sobre **${topic}** (${intent}). Busqué en internet y aquí va una respuesta sólida:\n\n`,
+      noMatch: (topic, n) =>
+        `Busqué **${topic}**${n} en la web, pero no encontré una coincidencia fuerte. Prueba a reformular con las palabras clave del tema.\n`,
+      related: "Contexto relacionado de la web",
+      also: "También útil",
+      planTitle: "Plan de estudio rápido",
+      plan: "20 min leer + escribir 5 datos de memoria, 15 min explicar en voz alta, 15 min practicar, 10 min revisar errores.",
+      sources: "Fuentes que usé",
+      fuzzy: `\nSi algo sigue confuso, dime: “explícalo más simple” o “dame un ejemplo.”\n`,
+    },
+    fr: {
+      short: "Réponse courte",
+      more: "Plus de détails",
+      sourceTopic: "Sujet source",
+      how: "Comment ça marche",
+      causes: "Causes principales",
+      diff: "Voici la différence",
+      answer: "Réponse",
+      lead: (n, topic, intent) =>
+        `Ok${n} — j'ai compris que tu demandes **${topic}** (${intent}). J'ai cherché sur internet, voici une réponse solide :\n\n`,
+      noMatch: (topic, n) =>
+        `J'ai cherché **${topic}**${n} sur le web, sans fort résultat. Reformule avec les mots-clés du sujet.\n`,
+      related: "Contexte lié du web",
+      also: "Aussi utile",
+      planTitle: "Plan d'étude rapide",
+      plan: "20 min lire + 5 faits de mémoire, 15 min expliquer à voix haute, 15 min pratiquer, 10 min revoir les erreurs.",
+      sources: "Sources utilisées",
+      fuzzy: `\nSi c'est encore flou, dis : « explique plus simplement » ou « donne un exemple ».\n`,
+    },
+    de: {
+      short: "Kurze Antwort",
+      more: "Mehr Details",
+      sourceTopic: "Quellthema",
+      how: "So funktioniert's",
+      causes: "Hauptursachen",
+      diff: "Hier ist der Unterschied",
+      answer: "Antwort",
+      lead: (n, topic, intent) =>
+        `Okay${n} — ich hab deine Frage zu **${topic}** verstanden (${intent}). Ich hab online gesucht, hier eine solide Antwort:\n\n`,
+      noMatch: (topic, n) =>
+        `Ich hab **${topic}**${n} gesucht, aber keinen starken Treffer. Formuliere mit den Kernwörtern neu.\n`,
+      related: "Passender Web-Kontext",
+      also: "Auch nützlich",
+      planTitle: "Schneller Lernplan",
+      plan: "20 Min lesen + 5 Fakten aus dem Gedächtnis, 15 Min laut erklären, 15 Min üben, 10 Min Fehler checken.",
+      sources: "Quellen",
+      fuzzy: `\nWenn etwas unklar bleibt: „einfacher erklären“ oder „Beispiel bitte.“\n`,
+    },
+    pt: {
+      short: "Resposta curta",
+      more: "Mais detalhes",
+      sourceTopic: "Tópico fonte",
+      how: "Como funciona",
+      causes: "Causas principais",
+      diff: "Aqui está a diferença",
+      answer: "Resposta",
+      lead: (n, topic, intent) =>
+        `Beleza${n} — entendi que você pergunta sobre **${topic}** (${intent}). Pesquisei na internet e aqui vai uma resposta sólida:\n\n`,
+      noMatch: (topic, n) =>
+        `Procurei **${topic}**${n} na web, mas não achei uma combinação forte. Reformule com as palavras-chave.\n`,
+      related: "Contexto relacionado da web",
+      also: "Também útil",
+      planTitle: "Plano de estudo rápido",
+      plan: "20 min ler + 5 fatos de memória, 15 min explicar em voz alta, 15 min praticar, 10 min revisar erros.",
+      sources: "Fontes que usei",
+      fuzzy: `\nSe ainda estiver confuso, diga: “explica mais simples” ou “me dá um exemplo.”\n`,
+    },
+    ru: {
+      short: "Короткий ответ",
+      more: "Подробнее",
+      sourceTopic: "Тема источника",
+      how: "Как это работает",
+      causes: "Основные причины",
+      diff: "Вот в чём разница",
+      answer: "Ответ",
+      lead: (n, topic, intent) =>
+        `Окей${n} — я понял(а), что вопрос про **${topic}** (${intent}). Поискал(а) в интернете, вот чёткий ответ:\n\n`,
+      noMatch: (topic, n) =>
+        `Искал(а) **${topic}**${n} в сети, но сильного совпадения нет. Переформулируй ключевыми словами темы.\n`,
+      related: "Связанный контекст из сети",
+      also: "Ещё полезно",
+      planTitle: "Быстрый план учёбы",
+      plan: "20 мин читать + 5 фактов по памяти, 15 мин объяснить вслух, 15 мин практика, 10 мин ошибки.",
+      sources: "Источники",
+      fuzzy: `\nЕсли что-то мутно — скажи: «объясни проще» или «дай пример».\n`,
+    },
+    ja: {
+      short: "短い答え",
+      more: "もう少し詳しく",
+      sourceTopic: "出典トピック",
+      how: "仕組み",
+      causes: "主な原因",
+      diff: "違いを整理すると",
+      answer: "答え",
+      lead: (n, topic, intent) =>
+        `オーケー${n} — 質問は **${topic}**（${intent}）だと理解したよ。ネットで調べた、しっかりした答え：\n\n`,
+      noMatch: (topic, n) =>
+        `**${topic}**${n} を探したけど強い一致がなかった。キーワードで言い換えてみて。\n`,
+      related: "ウェブの関連情報",
+      also: "ついでに役立つこと",
+      planTitle: "すぐ使える勉強プラン",
+      plan: "20分読む＋記憶から5事実、15分口頭説明、15分練習、10分見直し。",
+      sources: "使った出典",
+      fuzzy: `\nまだ曖昧なら「もっと簡単に」や「例をちょうだい」と聞いて。\n`,
+    },
+    ko: {
+      short: "짧은 답",
+      more: "더 자세히",
+      sourceTopic: "출처 주제",
+      how: "작동 방식",
+      causes: "주요 원인",
+      diff: "차이는 이렇다",
+      answer: "답",
+      lead: (n, topic, intent) =>
+        `오케이${n} — 질문은 **${topic}**(${intent})로 이해했어. 인터넷에서 찾아본 확실한 답:\n\n`,
+      noMatch: (topic, n) =>
+        `**${topic}**${n}을(를) 찾아봤지만 강한 일치가 없었어. 핵심 단어로 다시 물어봐.\n`,
+      related: "웹의 관련 맥락",
+      also: "같이 보면 좋은 것",
+      planTitle: "빠른 공부 계획",
+      plan: "20분 읽기 + 기억으로 사실 5개, 15분 말해보기, 15분 연습, 10분 오답 정리.",
+      sources: "사용한 출처",
+      fuzzy: `\n아직 헷갈리면 “더 쉽게” 또는 “예시 줘”라고 물어봐.\n`,
+    },
+    zh: {
+      short: "简短回答",
+      more: "更多细节",
+      sourceTopic: "来源主题",
+      how: "怎么运作",
+      causes: "主要原因",
+      diff: "区别在这里",
+      answer: "答案",
+      lead: (n, topic, intent) =>
+        `好${n}——我理解你在问 **${topic}**（${intent}）。我检索了网络，这里是扎实的回答：\n\n`,
+      noMatch: (topic, n) =>
+        `我搜了 **${topic}**${n}，但没有很强的匹配。用主题关键词再问一次试试。\n`,
+      related: "来自网络的相关背景",
+      also: "也有用",
+      planTitle: "快速学习计划",
+      plan: "20 分钟阅读 + 默写 5 个要点，15 分钟口述，15 分钟练习，10 分钟复盘错题。",
+      sources: "我用到的来源",
+      fuzzy: `\n如果还有不清楚的，可以说：“讲简单点”或“给我个例子。”\n`,
+    },
+  };
+
+  function answerPack(langCode) {
+    return ANSWER_I18N[langCode] || ANSWER_I18N.en;
+  }
+
+  function craftDirectAnswer(intent, topic, bestHit, langCode = "en") {
+    const pack = answerPack(langCode);
     const extract = humanizeFact(bestHit?.extract || bestHit?.text || "");
     const title = bestHit?.title || topic;
     if (!extract) return "";
@@ -4961,34 +5519,37 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     const rest = extract.length > lead.length + 20 ? extract : "";
 
     if (intent === "who") {
-      return `**Short answer:** ${lead}\n\n${rest ? `**More detail:** ${rest}\n\n` : ""}Source topic: **${title}**.`;
+      return `**${pack.short}:** ${lead}\n\n${rest ? `**${pack.more}:** ${rest}\n\n` : ""}${pack.sourceTopic}: **${title}**.`;
     }
     if (intent === "when") {
       const year = extract.match(
-        /\b((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*\d{3,4}|\d{3,4})\b/
+        /\b((?:January|February|March|April|May|June|July|August|September|October|November|December|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+\d{1,2},?\s*\d{3,4}|\d{3,4})\b/i
       );
       return year
-        ? `**Short answer:** **${year[1].trim()}**.\n\n${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`
-        : `**Short answer:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+        ? `**${pack.short}:** **${year[1].trim()}**.\n\n${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`
+        : `**${pack.short}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "where") {
-      return `**Short answer:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+      return `**${pack.short}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "why" || intent === "how" || intent === "causes") {
-      const label = intent === "how" ? "How it works" : intent === "causes" ? "Main causes" : "Short answer";
-      return `**${label}:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+      const label = intent === "how" ? pack.how : intent === "causes" ? pack.causes : pack.short;
+      return `**${label}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
     }
     if (intent === "compare") {
-      return `**Here's the difference:**\n\n${extract}`;
+      return `**${pack.diff}:**\n\n${extract}`;
     }
     if (intent === "define") {
       return `**${title}:** ${lead}${rest ? `\n\n${rest}` : ""}`;
     }
-    return `**Answer:** ${lead}${rest ? `\n\n**More detail:** ${rest}` : ""}`;
+    return `**${pack.answer}:** ${lead}${rest ? `\n\n**${pack.more}:** ${rest}` : ""}`;
   }
 
   function synthesizeFromResearch(question, research, mathBlock, priorTurns, webHits = [], understood = null) {
     const info = understood || understandQuestion(question, "");
+    const langCode = info.lang?.code || aiLastLang?.code || "en";
+    if (info.lang) aiLastLang = info.lang;
+    const pack = answerPack(langCode);
     const hits = rankHits(webHits.length ? webHits : collectWebHits(research), question, info.topic)
       .filter((h) => (h.score == null ? true : h.score > 0) || (h.extract || h.text));
     const best = hits[0];
@@ -4998,18 +5559,18 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
     let out = "";
     if (mathBlock) {
       out += `${mathBlock}\n`;
-      if (overview) out += `\nRelated context from the web: ${firstSentences(overview, 2)}\n`;
+      if (overview) out += `\n${pack.related}: ${firstSentences(overview, 2)}\n`;
     } else if (overview) {
-      out += `Okay${nameBit} — I understood your question as asking about **${info.topic}** (${info.intent}). I searched the internet and here's a solid answer:\n\n`;
-      out += `${craftDirectAnswer(info.intent, info.topic, best)}\n`;
+      out += pack.lead(nameBit, info.topic, info.intent);
+      out += `${craftDirectAnswer(info.intent, info.topic, best, langCode)}\n`;
     } else {
-      out += `I searched the web for **${info.topic}**${nameBit}, but didn't get a strong match. Try rephrasing with the main topic words (for example: “why is the sky blue” or “causes of World War I”).\n`;
+      out += pack.noMatch(info.topic, nameBit);
     }
 
     // Supporting points from other good hits
     const support = hits.slice(1, 4).filter((h) => (h.score == null || h.score >= 3));
     if (support.length && overview) {
-      out += `\n**Also useful:**\n`;
+      out += `\n**${pack.also}:**\n`;
       support.forEach((h) => {
         const blurb = firstSentences(humanizeFact(h.extract || h.text || ""), 1);
         if (!blurb) return;
@@ -5017,20 +5578,19 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
       });
     }
 
-    if (/study plan|how should i study|revise|review for|stressed about a .*test/i.test(question)) {
-      out +=
-        `\n**Quick study plan:** 20 min read + write 5 facts from memory, 15 min explain out loud, 15 min practice, 10 min review mistakes.\n`;
+    if (/study plan|how should i study|revise|review for|stressed about a .*test|plan de estudio|plan d'étude|lernplan|план учёбы|勉強計画|공부 계획|学习计划/i.test(question)) {
+      out += `\n**${pack.planTitle}:** ${pack.plan}\n`;
     }
 
     if (hits.length) {
-      out += `\n**Sources I used:**\n`;
+      out += `\n**${pack.sources}:**\n`;
       hits.slice(0, 5).forEach((h, i) => {
         out += `${i + 1}. [${h.title}](${h.url})\n`;
       });
     }
 
     if (overview || mathBlock) {
-      out += `\nIf any part is still fuzzy, ask me like: “explain that simpler” or “give an example.”\n`;
+      out += pack.fuzzy;
     }
 
     return {
@@ -5053,6 +5613,8 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
   async function askLlmChat(question, brief) {
     const base = (state.settings.aiBase || "https://openrouter.ai/api/v1").replace(/\/$/, "");
     const model = state.settings.aiModel || "openai/gpt-oss-20b:free";
+    const lang = aiLastLang?.code ? aiLastLang : detectLanguage(question);
+    aiLastLang = lang;
     const history = aiHistory
       .filter((m) => m.role === "user" || m.role === "assistant")
       .slice(-20)
@@ -5061,11 +5623,12 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         content: m.role === "assistant" ? String(m.content).slice(0, 2200) : m.content,
       }));
     const nameLine = aiUserName ? `Their name is ${aiUserName}. ` : "";
+    const langLine = `User language detected: ${lang.name} (${lang.code}). ALWAYS reply in ${lang.name} unless they explicitly ask for another language.`;
     const userPayload = brief
-      ? `QUESTION: ${question}\n\nINTERNET RESULTS:\n${brief}\n\nWrite a solid answer that directly addresses the question. Lead with the answer, then explain. Use the results. Include source links. Sound human.`
-      : `QUESTION: ${question}\n\nReply like a real person. Keep the vibe natural.`;
+      ? `QUESTION (${lang.name}): ${question}\n\nINTERNET RESULTS:\n${brief}\n\nWrite a solid answer in ${lang.name} that directly addresses the question. Lead with the answer, then explain. Use the results. Include source links. Sound human.`
+      : `QUESTION (${lang.name}): ${question}\n\nReply in ${lang.name} like a real person. Keep the vibe natural.`;
     const messages = [
-      { role: "system", content: `${AI_SYSTEM}\n${nameLine}` },
+      { role: "system", content: `${AI_SYSTEM}\n${nameLine}${langLine}` },
       ...history.slice(0, -1),
       { role: "user", content: userPayload },
     ];
@@ -5127,7 +5690,8 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
 
       const lastAssistant = [...aiHistory].reverse().find((m) => m.role === "assistant");
       const understoodPreview = understandQuestion(q, lastAssistant?.content || "");
-      typing.textContent = `PulseSearch · understanding “${understoodPreview.topic.slice(0, 42)}”…`;
+      const langLabel = understoodPreview.lang?.name || "English";
+      typing.textContent = `PulseSearch · ${langLabel} · “${understoodPreview.topic.slice(0, 36)}”…`;
 
       const mathBlock = trySolveMath(q);
       const {
@@ -5151,7 +5715,7 @@ Be accurate. Don't take invigilated exams for them — teach instead.`;
         try {
           content = await askLlmChat(
             q,
-            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nPulseSearch confidence: ${confPct}% (phase ${phase})\nGive a solid direct answer.`
+            `${brief}\nUnderstood topic: ${understood.topic}\nIntent: ${understood.intent}\nDetected language: ${understood.lang?.name || aiLastLang.name} (${understood.lang?.code || aiLastLang.code})\nPulseSearch confidence: ${confPct}% (phase ${phase})\nGive a solid direct answer in the user's language.`
           );
           followups = extractFollowups(content, q, research);
         } catch (err) {
