@@ -1134,7 +1134,9 @@
     totalForMode = 25 * 60;
     currentMode = "focus";
     running = false;
+    gamesUnlocked = false;
     lastEnemyKey = "";
+    if (els.gameModal && !els.gameModal.hidden) closeGameModal();
 
     applyTheme(null);
     setQuestTab("active");
